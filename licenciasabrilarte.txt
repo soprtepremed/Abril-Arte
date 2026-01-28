@@ -1,0 +1,29 @@
+abril arte 
+
+supa base :
+abrilruizlopez5@gmail.com
+
+cBG?E8Fb_?+qEM$
+
+contraseña de la organización : cBG?E8Fb_?+qEM$
+
+
+postgresql://postgres:[YOUR-PASSWORD]@db.zdaotvmfbawmitajazgl.supabase.co:5432/postgres
+
+anfitrión :
+db.zdaotvmfbawmitajazgl.subabase.co
+
+puerto :
+5432
+
+base de datos :
+Postgres
+
+usuario :
+Postgres
+
+https://zdaotvmfbawmitajazgl.supabase.co
+
+sb_publishable_O_qy4adlTvl_zLfA67WOgg_e1bxXoOj
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkYW90dm1mYmF3bWl0YWphemdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1NzE2MzgsImV4cCI6MjA4NTE0NzYzOH0.3UdkHNA_4G1aN-xwldxEr1bQFQlKNGDrcb0YtmbfKrg
+
