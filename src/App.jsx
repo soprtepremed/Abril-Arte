@@ -9,7 +9,7 @@ import { DataProvider } from './context/DataContext'
 function App() {
   return (
     <DataProvider>
-      <Router basename="/Abril-Arte">
+      <Router>
         <div className="relative min-h-screen">
           <MusicalBackground />
           <div className="relative z-10">
