@@ -183,7 +183,7 @@ export default function Cliente() {
             <div
                 className="fixed inset-0 z-0"
                 style={{
-                    backgroundImage: 'url(/images/IMG_3751.JPG)',
+                    backgroundImage: `url(${import.meta.env.BASE_URL}images/IMG_3751.JPG)`,
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
                     backgroundRepeat: 'no-repeat'

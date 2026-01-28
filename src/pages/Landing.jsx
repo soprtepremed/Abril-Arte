@@ -61,7 +61,7 @@ export default function Landing() {
             id: 'violin-solo',
             titulo: 'Abril Ruiz Violinista',
             subtitulo: 'Elegancia Atemporal en Cada Nota',
-            imagen: '/images/IMG_3567.jpg',
+            imagen: `${import.meta.env.BASE_URL}images/IMG_3567.jpg`,
             descripcion: 'El sonido íntimo y emotivo de un violín en vivo añade un toque de sofisticación a cualquier momento especial. Ideal para ceremonias, propuestas de matrimonio o cenas románticas.',
             ideal: [
                 'Ceremonias de bodas (entradas, firmas de actas)',
@@ -73,7 +73,7 @@ export default function Landing() {
             id: 'triarte',
             titulo: 'TriArte | Trío',
             subtitulo: 'Violín, Saxofón y Piano',
-            imagen: '/images/IMG_3675.jpg',
+            imagen: `${import.meta.env.BASE_URL}images/IMG_3675.jpg`,
             descripcion: 'El trío de piano, violín y viola ofrece una experiencia musical envolvente, ideal para eventos que exigen máxima elegancia. Con una riqueza armónica incomparable.',
             ideal: [
                 'Bodas en salones o iglesias con acústica destacada',
@@ -85,7 +85,7 @@ export default function Landing() {
             id: 'duo',
             titulo: 'Dúo de Violín y Saxofón',
             subtitulo: 'Energía y Sofisticación en Armonía',
-            imagen: '/images/IMG_3583.jpg',
+            imagen: `${import.meta.env.BASE_URL}images/IMG_3583.jpg`,
             descripcion: 'La combinación del violín y el saxofón fusiona lo mejor de dos mundos: la profundidad clásica y la frescura contemporánea. Perfecto para eventos que buscan dinamismo sin perder elegancia.',
             ideal: [
                 'Recepciones de boda (brindis, cóctel)',
@@ -106,7 +106,7 @@ export default function Landing() {
                 {/* Background Image */}
                 <div className="absolute inset-0 z-0">
                     <img
-                        src="/images/IMG_3553 copia.jpg"
+                        src={`${import.meta.env.BASE_URL}images/IMG_3553 copia.jpg`}
                         alt="Abril Arte"
                         className="w-full h-full object-cover"
                     />
@@ -142,7 +142,7 @@ export default function Landing() {
                         {/* Image */}
                         <div className="relative">
                             <img
-                                src="/images/IMG_3751.JPG"
+                                src={`${import.meta.env.BASE_URL}images/IMG_3751.JPG`}
                                 alt="Abril Arte - Quienes Somos"
                                 className="w-full rounded-3xl shadow-2xl"
                             />
