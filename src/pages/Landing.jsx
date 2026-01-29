@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Music, Heart, Calendar, Phone, Mail, MessageCircle, Instagram, Facebook, Youtube, Play, ChevronRight, Star, Users, Award, Check, MapPin } from 'lucide-react'
+import { Music, Heart, Calendar, Phone, Mail, MessageCircle, Instagram, Facebook, Youtube, Play, Pause, ChevronRight, Star, Users, Award, Check, MapPin } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { supabase } from '../lib/supabase'
 import Navbar from '../components/Navbar'
@@ -10,6 +10,34 @@ import MusicPlayer from '../components/MusicPlayer'
 export default function Landing() {
     const { songs } = useData()
     const featuredSongs = songs.slice(0, 6)
+
+    // Audio player state
+    const [currentSong, setCurrentSong] = useState(null)
+    const [isPlaying, setIsPlaying] = useState(false)
+    const [audio] = useState(new Audio())
+
+    useEffect(() => {
+        audio.onended = () => setIsPlaying(false)
+        audio.onplay = () => setIsPlaying(true)
+        audio.onpause = () => setIsPlaying(false)
+        return () => audio.pause()
+    }, [audio])
+
+    const playPause = (song) => {
+        if (currentSong?.id === song.id) {
+            if (isPlaying) {
+                audio.pause()
+            } else {
+                audio.play()
+            }
+        } else {
+            if (song.audioUrl) {
+                audio.src = song.audioUrl
+                audio.play()
+                setCurrentSong(song)
+            }
+        }
+    }
 
     // Estado del formulario de contacto
     const [formData, setFormData] = useState({
@@ -247,27 +275,43 @@ export default function Landing() {
                     </div>
 
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-                        {featuredSongs.map((song, index) => (
-                            <div
-                                key={song.id}
-                                className="group bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border border-transparent hover:border-[#C9A962]/30"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#C9A962] to-[#A68B3D] flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform">
-                                        <Play className="w-5 h-5 ml-0.5" fill="currentColor" />
+                        {featuredSongs.map((song, index) => {
+                            const isCurrentPlaying = currentSong?.id === song.id && isPlaying
+                            return (
+                                <div
+                                    key={song.id}
+                                    className="group bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-1 border border-transparent hover:border-[#C9A962]/30"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <button
+                                            onClick={() => playPause(song)}
+                                            disabled={!song.audioUrl}
+                                            className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-all ${song.audioUrl
+                                                    ? isCurrentPlaying
+                                                        ? 'bg-gradient-to-br from-[#C9A962] to-[#A68B3D] animate-pulse'
+                                                        : 'bg-gradient-to-br from-[#C9A962] to-[#A68B3D] group-hover:scale-110'
+                                                    : 'bg-gray-300 cursor-not-allowed'
+                                                }`}
+                                        >
+                                            {isCurrentPlaying ? (
+                                                <Pause className="w-5 h-5" fill="currentColor" />
+                                            ) : (
+                                                <Play className="w-5 h-5 ml-0.5" fill="currentColor" />
+                                            )}
+                                        </button>
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="font-semibold text-[#3D3426] truncate">{song.title}</h4>
+                                            <p className="text-sm text-[#8B7D6B] truncate">{song.artist}</p>
+                                        </div>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="font-semibold text-[#3D3426] truncate">{song.title}</h4>
-                                        <p className="text-sm text-[#8B7D6B] truncate">{song.artist}</p>
+                                    <div className="mt-4">
+                                        <span className="inline-block px-3 py-1 text-xs font-medium bg-[#E8DDD4] text-[#6B5E4F] rounded-full">
+                                            {song.category}
+                                        </span>
                                     </div>
                                 </div>
-                                <div className="mt-4">
-                                    <span className="inline-block px-3 py-1 text-xs font-medium bg-[#E8DDD4] text-[#6B5E4F] rounded-full">
-                                        {song.category}
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
 
                     <div className="text-center">

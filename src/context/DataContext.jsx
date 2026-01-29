@@ -331,46 +331,51 @@ export function DataProvider({ children }) {
     const setSelectedSongs = async (clientId, selectedIds) => {
         try {
             // Obtener registros existentes para este cliente
-            const { data: existingRows } = await supabase
+            const { data: existingRows, error: fetchError } = await supabase
                 .from('repertorios_asignados')
                 .select('cancion_id')
                 .eq('cliente_id', clientId)
+
+            if (fetchError) throw fetchError
 
             const existingIds = existingRows?.map(r => r.cancion_id) || []
 
             // 1. Insertar registros para canciones seleccionadas que no existían
             const toInsert = selectedIds.filter(id => !existingIds.includes(id))
             if (toInsert.length > 0) {
-                await supabase.from('repertorios_asignados').insert(
+                const { error: insertError } = await supabase.from('repertorios_asignados').insert(
                     toInsert.map(songId => ({
                         cliente_id: clientId,
                         cancion_id: songId,
                         seleccionada: true
                     }))
                 )
+                if (insertError) throw insertError
             }
 
             // 2. Actualizar a TRUE las que ya existían y están seleccionadas
             const toUpdateTrue = selectedIds.filter(id => existingIds.includes(id))
             if (toUpdateTrue.length > 0) {
-                await supabase.from('repertorios_asignados')
+                const { error: updateTrueError } = await supabase.from('repertorios_asignados')
                     .update({ seleccionada: true })
                     .eq('cliente_id', clientId)
                     .in('cancion_id', toUpdateTrue)
+                if (updateTrueError) throw updateTrueError
             }
 
             // 3. Actualizar a FALSE las que existen pero YA NO están seleccionadas
-            // (Esto permite deseleccionar)
             const toUpdateFalse = existingIds.filter(id => !selectedIds.includes(id))
             if (toUpdateFalse.length > 0) {
-                await supabase.from('repertorios_asignados')
+                const { error: updateFalseError } = await supabase.from('repertorios_asignados')
                     .update({ seleccionada: false })
                     .eq('cliente_id', clientId)
                     .in('cancion_id', toUpdateFalse)
+                if (updateFalseError) throw updateFalseError
             }
 
         } catch (error) {
             console.error('Error guardando selección:', error)
+            throw error // Re-throw para que el caller pueda manejarlo
         }
     }
 

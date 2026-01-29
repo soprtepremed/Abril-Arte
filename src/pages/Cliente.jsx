@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Music, Heart, Play, Pause, Search, Filter, Save, Home, SkipBack, SkipForward, X, Check } from 'lucide-react'
+import { Music, Heart, Play, Pause, Search, Filter, Save, Home, SkipBack, SkipForward, X, Check, Loader2 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 
 export default function Cliente() {
@@ -16,6 +16,7 @@ export default function Cliente() {
     const [showSelected, setShowSelected] = useState(false)
     const [saved, setSaved] = useState(false)
     const [loadingLogin, setLoadingLogin] = useState(false)
+    const [savingSelection, setSavingSelection] = useState(false)
 
     // Audio player
     const [currentSong, setCurrentSong] = useState(null)
@@ -84,12 +85,19 @@ export default function Cliente() {
         }
     }
 
-    const saveSelection = () => {
-        if (client) {
-            setSelectedSongs(client.id, selected)
+    const saveSelection = async () => {
+        if (!client || savingSelection) return
+
+        setSavingSelection(true)
+        try {
+            await setSelectedSongs(client.id, selected)
             setSaved(true)
             setHasInitialSave(true)
-            // No auto-cerrar el modal, el usuario lo cierra manualmente
+        } catch (err) {
+            console.error('Error guardando selección:', err)
+            alert('Error al guardar. Intenta de nuevo.')
+        } finally {
+            setSavingSelection(false)
         }
     }
 
@@ -476,10 +484,15 @@ export default function Cliente() {
                     <div className="max-w-6xl mx-auto flex items-center justify-center">
                         <button
                             onClick={saveSelection}
-                            disabled={selected.length === 0}
+                            disabled={selected.length === 0 || savingSelection}
                             className="btn-shine flex items-center gap-3 px-10 py-4 bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold rounded-full shadow-lg shadow-[#C9A962]/30 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {saved ? (
+                            {savingSelection ? (
+                                <>
+                                    <Loader2 className="w-6 h-6 animate-spin" />
+                                    Guardando...
+                                </>
+                            ) : saved ? (
                                 <>
                                     <Check className="w-6 h-6" />
                                     ¡Guardado!

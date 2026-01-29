@@ -536,6 +536,12 @@ export default function Admin() {
         setTimeout(() => setCopiedCode(''), 2000)
     }
 
+    const copyCode = (code) => {
+        navigator.clipboard.writeText(code)
+        setCopiedCode(`code-${code}`)
+        setTimeout(() => setCopiedCode(''), 2000)
+    }
+
     const availableSongs = songs.filter(s => !currentRepertory.assignedSongs.includes(s.id))
     const assignedSongs = songs.filter(s => currentRepertory.assignedSongs.includes(s.id))
 
@@ -797,7 +803,23 @@ export default function Admin() {
                                             <div key={client.id} className="glass rounded-2xl p-6 hover:shadow-xl transition-all duration-300 border border-transparent hover:border-[#C9A962]/30">
                                                 <div className="flex justify-between items-start mb-4">
                                                     <h3 className="font-semibold text-lg text-[#3D3426]">{client.name}</h3>
-                                                    <span className="px-3 py-1 bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white text-xs font-bold rounded-full">{client.code}</span>
+                                                    <button
+                                                        onClick={() => copyCode(client.code)}
+                                                        className="px-3 py-1 bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white text-xs font-bold rounded-full hover:scale-105 transition-transform flex items-center gap-1"
+                                                        title="Copiar código"
+                                                    >
+                                                        {copiedCode === `code-${client.code}` ? (
+                                                            <>
+                                                                <Check className="w-3 h-3" />
+                                                                ¡Copiado!
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Copy className="w-3 h-3" />
+                                                                {client.code}
+                                                            </>
+                                                        )}
+                                                    </button>
                                                 </div>
                                                 <div className="space-y-2 text-sm text-[#6B5E4F] mb-4">
                                                     {client.email && <p>📧 {client.email}</p>}
