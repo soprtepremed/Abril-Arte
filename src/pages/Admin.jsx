@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Music, Users, ListChecks, Plus, Edit, Trash2, Play, Copy, Check, X, Home, ArrowRight, ArrowLeft, Save, Loader2, MessageSquare, Phone, Calendar, Mail, Eye, EyeOff, LogOut, Heart } from 'lucide-react'
+import { Music, Users, ListChecks, Plus, Edit, Trash2, Play, Copy, Check, X, Home, ArrowRight, ArrowLeft, Save, Loader2, MessageSquare, Phone, Calendar, Mail, Eye, EyeOff, LogOut, Heart, FileText, Printer, DollarSign } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { supabase } from '../lib/supabase'
 
@@ -63,6 +63,22 @@ export default function Admin() {
     const [solicitudes, setSolicitudes] = useState([])
     const [loadingSolicitudes, setLoadingSolicitudes] = useState(false)
 
+    // Recibos de Anticipo
+    const [reciboModal, setReciboModal] = useState({ open: false, solicitud: null, showPreview: false })
+    const [reciboForm, setReciboForm] = useState({
+        cliente_nombre: '',
+        cliente_telefono: '',
+        monto: '',
+        concepto: '',
+        fecha_evento: '',
+        metodo_pago: 'efectivo',
+        notas: ''
+    })
+    const [savingRecibo, setSavingRecibo] = useState(false)
+    const [recibos, setRecibos] = useState([])
+    const [loadingRecibos, setLoadingRecibos] = useState(false)
+
+
     // Cargar solicitudes
     useEffect(() => {
         const loadSolicitudes = async () => {
@@ -76,6 +92,22 @@ export default function Admin() {
         }
         loadSolicitudes()
     }, [])
+
+    // Cargar recibos cuando se activa la pestaña
+    useEffect(() => {
+        if (activeTab === 'recibos') {
+            const loadRecibos = async () => {
+                setLoadingRecibos(true)
+                const { data, error } = await supabase
+                    .from('recibos_anticipos')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                if (!error) setRecibos(data || [])
+                setLoadingRecibos(false)
+            }
+            loadRecibos()
+        }
+    }, [activeTab])
 
     const updateSolicitudEstado = async (id, estado) => {
         const { error } = await supabase
@@ -93,6 +125,300 @@ export default function Admin() {
         if (!error) {
             setSolicitudes(prev => prev.filter(s => s.id !== id))
         }
+    }
+
+    // Abrir modal de recibo con datos pre-llenados
+    const openReciboModal = (solicitud) => {
+        setReciboForm({
+            cliente_nombre: solicitud.nombre || '',
+            cliente_telefono: solicitud.telefono || '',
+            monto: '',
+            concepto: `${solicitud.tipo_evento || 'Evento'} - ${solicitud.formato_interes || ''}`.trim(),
+            fecha_evento: solicitud.fecha_evento || '',
+            metodo_pago: 'efectivo',
+            notas: ''
+        })
+        setReciboModal({ open: true, solicitud, showPreview: false })
+    }
+
+    // Guardar recibo en base de datos
+    const saveRecibo = async () => {
+        if (!reciboForm.monto || !reciboForm.concepto) {
+            alert('Por favor ingresa el monto y concepto')
+            return
+        }
+        setSavingRecibo(true)
+        try {
+            const { error } = await supabase.from('recibos_anticipos').insert({
+                solicitud_id: reciboModal.solicitud?.id || null,
+                cliente_nombre: reciboForm.cliente_nombre,
+                cliente_telefono: reciboForm.cliente_telefono,
+                monto: parseFloat(reciboForm.monto),
+                concepto: reciboForm.concepto,
+                fecha_evento: reciboForm.fecha_evento || null,
+                metodo_pago: reciboForm.metodo_pago,
+                notas: reciboForm.notas || null
+            })
+            if (error) throw error
+            // Generate PDF and reset form
+            generateReciboPDF()
+            setReciboForm({ cliente_nombre: '', cliente_telefono: '', monto: '', concepto: '', fecha_evento: '', metodo_pago: 'efectivo', notas: '' })
+        } catch (err) {
+            alert('Error al guardar: ' + err.message)
+        } finally {
+            setSavingRecibo(false)
+        }
+    }
+
+    // Generar PDF para imprimir - Estilo Ticket de Compra
+    const generateReciboPDF = () => {
+        const fechaEmision = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
+        const horaEmision = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+        const folio = `AA-${Date.now().toString().slice(-6)}`
+
+        const printWindow = window.open('', '_blank')
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Recibo - ${reciboForm.cliente_nombre}</title>
+                <style>
+                    @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap');
+                    @page { size: auto; margin: 10mm; }
+                    * { margin: 0; padding: 0; box-sizing: border-box; }
+                    body { 
+                        font-family: 'Roboto Mono', monospace; 
+                        background: #fff; 
+                        color: #333;
+                        font-size: 12px;
+                        line-height: 1.4;
+                    }
+                    .ticket {
+                        max-width: 400px;
+                        margin: 0 auto;
+                        padding: 20px;
+                        background: #fff;
+                    }
+                    
+                    /* Header */
+                    .header {
+                        text-align: center;
+                        padding-bottom: 12px;
+                        border-bottom: 2px dashed #C9A962;
+                    }
+                    .logo {
+                        font-family: 'Playfair Display', serif;
+                        font-size: 1.6rem;
+                        font-weight: 700;
+                        color: #C9A962;
+                    }
+                    .logo-note { color: #3D3426; }
+                    .tagline {
+                        font-size: 9px;
+                        color: #666;
+                        letter-spacing: 2px;
+                        text-transform: uppercase;
+                        margin-top: 3px;
+                    }
+                    
+                    /* Folio y fecha */
+                    .meta {
+                        text-align: center;
+                        padding: 10px 0;
+                        border-bottom: 1px dashed #ddd;
+                    }
+                    .folio {
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: #333;
+                    }
+                    .fecha {
+                        font-size: 10px;
+                        color: #666;
+                        margin-top: 3px;
+                    }
+                    
+                    /* Título */
+                    .titulo {
+                        text-align: center;
+                        padding: 12px 0;
+                        font-size: 14px;
+                        font-weight: 700;
+                        text-transform: uppercase;
+                        letter-spacing: 2px;
+                        background: #3D3426;
+                        color: #C9A962;
+                        margin: 10px -15px;
+                    }
+                    
+                    /* Datos */
+                    .datos {
+                        padding: 10px 0;
+                    }
+                    .row {
+                        display: flex;
+                        justify-content: space-between;
+                        padding: 5px 0;
+                        border-bottom: 1px dotted #eee;
+                    }
+                    .row:last-child { border-bottom: none; }
+                    .label {
+                        color: #888;
+                        font-size: 10px;
+                        text-transform: uppercase;
+                    }
+                    .value {
+                        font-weight: 500;
+                        color: #333;
+                        text-align: right;
+                        max-width: 60%;
+                    }
+                    
+                    /* Monto */
+                    .total-section {
+                        background: #FAF7F2;
+                        margin: 10px -15px;
+                        padding: 15px;
+                        text-align: center;
+                        border-top: 2px dashed #C9A962;
+                        border-bottom: 2px dashed #C9A962;
+                    }
+                    .total-label {
+                        font-size: 10px;
+                        color: #888;
+                        text-transform: uppercase;
+                        letter-spacing: 2px;
+                    }
+                    .total-value {
+                        font-size: 28px;
+                        font-weight: 700;
+                        color: #C9A962;
+                        margin: 5px 0;
+                    }
+                    .total-text {
+                        font-size: 9px;
+                        color: #666;
+                    }
+                    
+                    /* Notas */
+                    .notas {
+                        padding: 10px 0;
+                        font-size: 10px;
+                        color: #666;
+                        text-align: center;
+                        border-bottom: 1px dashed #ddd;
+                    }
+                    
+                    /* Footer */
+                    .footer {
+                        padding: 12px 0;
+                        text-align: center;
+                    }
+                    .gracias {
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: #3D3426;
+                        margin-bottom: 5px;
+                    }
+                    .contacto {
+                        font-size: 9px;
+                        color: #888;
+                        line-height: 1.5;
+                    }
+                    
+                    /* Corte */
+                    .corte {
+                        text-align: center;
+                        padding: 10px 0;
+                        margin-top: 5px;
+                    }
+                    .corte-line {
+                        border-top: 1px dashed #aaa;
+                        position: relative;
+                    }
+                    .corte-text {
+                        font-size: 8px;
+                        color: #aaa;
+                        margin-top: 5px;
+                    }
+                    
+                    @media print { 
+                        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="ticket">
+                    <div class="header">
+                        <div class="logo"><span class="logo-note">♪</span> Abril Arte</div>
+                        <div class="tagline">Música para Eventos Sociales</div>
+                    </div>
+                    
+                    <div class="meta">
+                        <div class="folio">${folio}</div>
+                        <div class="fecha">${fechaEmision} • ${horaEmision}</div>
+                    </div>
+                    
+                    <div class="titulo">Recibo de Anticipo</div>
+                    
+                    <div class="datos">
+                        <div class="row">
+                            <span class="label">Cliente</span>
+                            <span class="value">${reciboForm.cliente_nombre}</span>
+                        </div>
+                        ${reciboForm.cliente_telefono ? `
+                        <div class="row">
+                            <span class="label">Tel</span>
+                            <span class="value">${reciboForm.cliente_telefono}</span>
+                        </div>` : ''}
+                        <div class="row">
+                            <span class="label">Concepto</span>
+                            <span class="value">${reciboForm.concepto}</span>
+                        </div>
+                        ${reciboForm.fecha_evento ? `
+                        <div class="row">
+                            <span class="label">Evento</span>
+                            <span class="value">${new Date(reciboForm.fecha_evento).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                        </div>` : ''}
+                        <div class="row">
+                            <span class="label">Pago</span>
+                            <span class="value">${reciboForm.metodo_pago.charAt(0).toUpperCase() + reciboForm.metodo_pago.slice(1)}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="total-section">
+                        <div class="total-label">Anticipo Recibido</div>
+                        <div class="total-value">$${parseFloat(reciboForm.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                        <div class="total-text">MXN • Pesos Mexicanos</div>
+                    </div>
+                    
+                    ${reciboForm.notas ? `
+                    <div class="notas">
+                        <strong>Notas:</strong> ${reciboForm.notas}
+                    </div>` : ''}
+                    
+                    <div class="notas">
+                        El saldo restante deberá cubrirse antes del evento.
+                    </div>
+                    
+                    <div class="footer">
+                        <div class="gracias">¡Gracias por su preferencia!</div>
+                        <div class="contacto">
+                            Abril Arte<br>
+                            Tuxtla Gutiérrez, Chiapas
+                        </div>
+                    </div>
+                    
+                    <div class="corte">
+                        <div class="corte-line"></div>
+                        <div class="corte-text">✂ CONSERVE ESTE TICKET</div>
+                    </div>
+                </div>
+                <script>window.onload = function() { window.print(); }</script>
+            </body>
+            </html>
+        `)
+        printWindow.document.close()
     }
 
     // Cargar repertorios de todos los clientes
@@ -234,6 +560,7 @@ export default function Admin() {
         { id: 'clients', label: 'Clientes', icon: Users },
         { id: 'assign', label: 'Asignar Repertorio', icon: ListChecks },
         { id: 'solicitudes', label: 'Solicitudes', icon: MessageSquare, count: solicitudes.filter(s => s.estado === 'pendiente').length },
+        { id: 'recibos', label: 'Recibos', icon: FileText },
     ]
 
     if (loading) {
@@ -720,6 +1047,7 @@ export default function Admin() {
                                                             WhatsApp
                                                         </a>
                                                     )}
+
                                                     <button
                                                         onClick={() => deleteSolicitud(s.id)}
                                                         className="px-3 py-2 text-red-500 text-sm hover:bg-red-50 rounded-lg transition-colors"
@@ -732,6 +1060,222 @@ export default function Admin() {
                                     ))}
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* Recibos Tab */}
+                    {activeTab === 'recibos' && (
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                                <h2 className="font-display text-2xl font-bold text-[#3D3426] flex items-center gap-3">
+                                    <FileText className="w-7 h-7 text-[#C9A962]" />
+                                    Recibos de Anticipo
+                                </h2>
+                                <button
+                                    onClick={() => openReciboModal(null)}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all"
+                                >
+                                    <Plus className="w-5 h-5" />
+                                    Nuevo Recibo
+                                </button>
+                            </div>
+
+                            {/* Formulario de Recibo */}
+                            <div className="glass rounded-2xl p-6">
+                                <h3 className="font-display text-xl font-bold text-[#3D3426] mb-6">Generar Recibo de Anticipo</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Cliente *</label>
+                                        <input
+                                            type="text"
+                                            value={reciboForm.cliente_nombre}
+                                            onChange={e => setReciboForm({ ...reciboForm, cliente_nombre: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
+                                            placeholder="Nombre del cliente"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Teléfono</label>
+                                        <input
+                                            type="tel"
+                                            value={reciboForm.cliente_telefono}
+                                            onChange={e => setReciboForm({ ...reciboForm, cliente_telefono: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
+                                            placeholder="Opcional"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Monto del Anticipo *</label>
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B5E4F] font-semibold">$</span>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={reciboForm.monto}
+                                                onChange={e => setReciboForm({ ...reciboForm, monto: e.target.value })}
+                                                className="w-full pl-8 pr-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none text-xl font-bold text-[#C9A962]"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Método de Pago</label>
+                                        <select
+                                            value={reciboForm.metodo_pago}
+                                            onChange={e => setReciboForm({ ...reciboForm, metodo_pago: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
+                                        >
+                                            <option value="efectivo">Efectivo</option>
+                                            <option value="transferencia">Transferencia</option>
+                                            <option value="tarjeta">Tarjeta</option>
+                                        </select>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Concepto *</label>
+                                        <input
+                                            type="text"
+                                            value={reciboForm.concepto}
+                                            onChange={e => setReciboForm({ ...reciboForm, concepto: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
+                                            placeholder="Ej: Boda - Trío de cuerdas en ceremonia"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Fecha del Evento</label>
+                                        <input
+                                            type="date"
+                                            value={reciboForm.fecha_evento}
+                                            onChange={e => setReciboForm({ ...reciboForm, fecha_evento: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Notas (opcional)</label>
+                                        <input
+                                            type="text"
+                                            value={reciboForm.notas}
+                                            onChange={e => setReciboForm({ ...reciboForm, notas: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
+                                            placeholder="Notas adicionales..."
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex gap-3 mt-6">
+                                    <button
+                                        onClick={() => setReciboForm({ cliente_nombre: '', cliente_telefono: '', monto: '', concepto: '', fecha_evento: '', metodo_pago: 'efectivo', notas: '' })}
+                                        className="px-6 py-3 rounded-xl border-2 border-[#E8DDD4] text-[#6B5E4F] font-medium hover:bg-[#E8DDD4] transition-colors"
+                                    >
+                                        Limpiar
+                                    </button>
+                                    <button
+                                        onClick={saveRecibo}
+                                        disabled={savingRecibo || !reciboForm.cliente_nombre || !reciboForm.monto || !reciboForm.concepto}
+                                        className="flex-1 py-3 rounded-xl bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                                    >
+                                        {savingRecibo ? <Loader2 className="w-5 h-5 animate-spin" /> : <Printer className="w-5 h-5" />}
+                                        {savingRecibo ? 'Guardando...' : 'Guardar e Imprimir'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Historial de Ventas */}
+                            <div className="glass rounded-2xl p-6 mt-6">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className="font-display text-xl font-bold text-[#3D3426] flex items-center gap-2">
+                                        <DollarSign className="w-5 h-5 text-[#C9A962]" />
+                                        Historial de Ventas
+                                    </h3>
+                                    {recibos.length > 0 && (
+                                        <div className="flex gap-4">
+                                            <div className="text-right">
+                                                <p className="text-xs text-[#8B7D6B]">Total Anticipos</p>
+                                                <p className="text-lg font-bold text-[#C9A962]">
+                                                    ${recibos.reduce((sum, r) => sum + parseFloat(r.monto || 0), 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs text-[#8B7D6B]">Recibos</p>
+                                                <p className="text-lg font-bold text-[#3D3426]">{recibos.length}</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {loadingRecibos ? (
+                                    <div className="flex items-center justify-center py-8">
+                                        <Loader2 className="w-6 h-6 animate-spin text-[#C9A962]" />
+                                        <span className="ml-2 text-[#8B7D6B]">Cargando...</span>
+                                    </div>
+                                ) : recibos.length === 0 ? (
+                                    <div className="text-center py-8 text-[#8B7D6B]">
+                                        <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
+                                        <p>No hay recibos registrados</p>
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-sm">
+                                            <thead>
+                                                <tr className="border-b-2 border-[#E8DDD4]">
+                                                    <th className="text-left py-3 px-2 text-[#6B5E4F] font-semibold">Fecha</th>
+                                                    <th className="text-left py-3 px-2 text-[#6B5E4F] font-semibold">Cliente</th>
+                                                    <th className="text-left py-3 px-2 text-[#6B5E4F] font-semibold">Concepto</th>
+                                                    <th className="text-right py-3 px-2 text-[#6B5E4F] font-semibold">Monto</th>
+                                                    <th className="text-center py-3 px-2 text-[#6B5E4F] font-semibold">Pago</th>
+                                                    <th className="text-center py-3 px-2 text-[#6B5E4F] font-semibold">Acciones</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {recibos.map((r) => (
+                                                    <tr key={r.id} className="border-b border-[#E8DDD4] hover:bg-[#FAF7F2] transition-colors">
+                                                        <td className="py-3 px-2 text-[#5A5A5A]">
+                                                            {new Date(r.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })}
+                                                        </td>
+                                                        <td className="py-3 px-2">
+                                                            <p className="font-medium text-[#3D3426]">{r.cliente_nombre}</p>
+                                                            {r.cliente_telefono && (
+                                                                <p className="text-xs text-[#8B7D6B]">{r.cliente_telefono}</p>
+                                                            )}
+                                                        </td>
+                                                        <td className="py-3 px-2 text-[#5A5A5A] max-w-[200px] truncate">{r.concepto}</td>
+                                                        <td className="py-3 px-2 text-right font-bold text-[#C9A962]">
+                                                            ${parseFloat(r.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                                                        </td>
+                                                        <td className="py-3 px-2 text-center">
+                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${r.metodo_pago === 'efectivo' ? 'bg-green-100 text-green-700' :
+                                                                r.metodo_pago === 'transferencia' ? 'bg-blue-100 text-blue-700' :
+                                                                    'bg-purple-100 text-purple-700'
+                                                                }`}>
+                                                                {r.metodo_pago?.charAt(0).toUpperCase() + r.metodo_pago?.slice(1)}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-3 px-2 text-center">
+                                                            <button
+                                                                onClick={() => {
+                                                                    setReciboForm({
+                                                                        cliente_nombre: r.cliente_nombre,
+                                                                        cliente_telefono: r.cliente_telefono || '',
+                                                                        monto: r.monto,
+                                                                        concepto: r.concepto,
+                                                                        fecha_evento: r.fecha_evento || '',
+                                                                        metodo_pago: r.metodo_pago || 'efectivo',
+                                                                        notas: r.notas || ''
+                                                                    })
+                                                                    generateReciboPDF()
+                                                                }}
+                                                                className="p-2 text-[#C9A962] hover:bg-[#C9A962]/10 rounded-lg transition-colors"
+                                                                title="Reimprimir"
+                                                            >
+                                                                <Printer className="w-4 h-4" />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </main>
@@ -961,6 +1505,163 @@ export default function Admin() {
                     </div>
                 )
             }
+
+            {/* Recibo Modal */}
+            {reciboModal.open && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                    <div className="bg-gradient-to-br from-white to-[#FAF3EB] rounded-3xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl border border-[#E8DDD4]">
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-[#C9A962] to-[#A68B3D] p-6">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
+                                        <FileText className="w-6 h-6 text-white" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-display text-2xl font-bold text-white">Recibo de Anticipo</h3>
+                                        <p className="text-white/70 text-sm">{reciboModal.showPreview ? 'Listo para imprimir' : 'Completa los datos'}</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setReciboModal({ open: false, solicitud: null, showPreview: false })} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors">
+                                    <X className="w-5 h-5 text-white" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {!reciboModal.showPreview ? (
+                            /* Formulario */
+                            <div className="p-6 space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Cliente *</label>
+                                        <input
+                                            type="text"
+                                            value={reciboForm.cliente_nombre}
+                                            onChange={e => setReciboForm({ ...reciboForm, cliente_nombre: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Teléfono</label>
+                                        <input
+                                            type="tel"
+                                            value={reciboForm.cliente_telefono}
+                                            onChange={e => setReciboForm({ ...reciboForm, cliente_telefono: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-[#3D3426] mb-2">Monto del Anticipo *</label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B5E4F] font-semibold">$</span>
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={reciboForm.monto}
+                                            onChange={e => setReciboForm({ ...reciboForm, monto: e.target.value })}
+                                            className="w-full pl-8 pr-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none text-2xl font-bold text-[#C9A962]"
+                                            placeholder="0.00"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-[#3D3426] mb-2">Concepto *</label>
+                                    <input
+                                        type="text"
+                                        value={reciboForm.concepto}
+                                        onChange={e => setReciboForm({ ...reciboForm, concepto: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
+                                        placeholder="Ej: Boda - Trío de cuerdas"
+                                        required
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Fecha del Evento</label>
+                                        <input
+                                            type="date"
+                                            value={reciboForm.fecha_evento}
+                                            onChange={e => setReciboForm({ ...reciboForm, fecha_evento: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Método de Pago</label>
+                                        <select
+                                            value={reciboForm.metodo_pago}
+                                            onChange={e => setReciboForm({ ...reciboForm, metodo_pago: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
+                                        >
+                                            <option value="efectivo">Efectivo</option>
+                                            <option value="transferencia">Transferencia</option>
+                                            <option value="tarjeta">Tarjeta</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-[#3D3426] mb-2">Notas (opcional)</label>
+                                    <textarea
+                                        rows={2}
+                                        value={reciboForm.notas}
+                                        onChange={e => setReciboForm({ ...reciboForm, notas: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none resize-none"
+                                        placeholder="Notas adicionales..."
+                                    />
+                                </div>
+                                <div className="flex gap-3 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setReciboModal({ open: false, solicitud: null, showPreview: false })}
+                                        className="flex-1 py-3 rounded-full border-2 border-[#E8DDD4] text-[#6B5E4F] font-medium hover:bg-[#E8DDD4] transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        onClick={saveRecibo}
+                                        disabled={savingRecibo}
+                                        className="flex-1 py-3 rounded-full bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                                    >
+                                        {savingRecibo ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                                        {savingRecibo ? 'Guardando...' : 'Guardar y Continuar'}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            /* Vista previa confirmación */
+                            <div className="p-6 text-center">
+                                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-green-100 flex items-center justify-center">
+                                    <Check className="w-10 h-10 text-green-600" />
+                                </div>
+                                <h4 className="font-display text-2xl font-bold text-[#3D3426] mb-2">¡Recibo Guardado!</h4>
+                                <p className="text-[#6B5E4F] mb-6">El recibo ha sido guardado en la base de datos.</p>
+                                <div className="bg-[#FAF3EB] rounded-2xl p-4 mb-6 text-left">
+                                    <p className="text-sm text-[#8B7D6B]">Cliente: <span className="font-semibold text-[#3D3426]">{reciboForm.cliente_nombre}</span></p>
+                                    <p className="text-sm text-[#8B7D6B]">Monto: <span className="font-bold text-[#C9A962] text-xl">${parseFloat(reciboForm.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span></p>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setReciboModal({ open: false, solicitud: null, showPreview: false })}
+                                        className="flex-1 py-3 rounded-full border-2 border-[#E8DDD4] text-[#6B5E4F] font-medium hover:bg-[#E8DDD4] transition-colors"
+                                    >
+                                        Cerrar
+                                    </button>
+                                    <button
+                                        onClick={generateReciboPDF}
+                                        className="flex-1 py-3 rounded-full bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold shadow-lg flex items-center justify-center gap-2"
+                                    >
+                                        <Printer className="w-5 h-5" />
+                                        Imprimir PDF
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div >
     )
 }
