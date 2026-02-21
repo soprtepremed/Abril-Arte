@@ -23,14 +23,29 @@ export default function Admin() {
         }
     }, [])
 
-    const handleLogin = (e) => {
+    const [loginLoading, setLoginLoading] = useState(false)
+
+    const handleLogin = async (e) => {
         e.preventDefault()
-        if (loginForm.username === import.meta.env.VITE_ADMIN_USER && loginForm.password === import.meta.env.VITE_ADMIN_PASS) {
-            setIsAuthenticated(true)
-            localStorage.setItem('admin_session', 'authenticated')
-            setLoginError('')
-        } else {
-            setLoginError('Usuario o contraseña incorrectos')
+        setLoginLoading(true)
+        try {
+            const { data, error } = await supabase.rpc('verificar_admin', {
+                p_usuario: loginForm.username,
+                p_contrasena: loginForm.password
+            })
+            if (error) throw error
+            if (data) {
+                setIsAuthenticated(true)
+                localStorage.setItem('admin_session', 'authenticated')
+                setLoginError('')
+            } else {
+                setLoginError('Usuario o contraseña incorrectos')
+            }
+        } catch (err) {
+            setLoginError('Error de conexión. Intenta de nuevo.')
+            console.error(err)
+        } finally {
+            setLoginLoading(false)
         }
     }
 
