@@ -887,7 +887,7 @@ export default function Landing() {
                     </div>
                 </div>
                 <div className="max-w-6xl mx-auto mt-6 pt-6 border-t border-[#3D3426] text-center">
-                    <p className="text-xs text-[#6B5E4F]">© 2024 Abril Arte. Chiapas, México</p>
+                    <p className="text-xs text-[#6B5E4F]">© {new Date().getFullYear()} Abril Arte. Chiapas, México</p>
                 </div>
             </footer>
         </div>

@@ -25,7 +25,7 @@ export default function Admin() {
 
     const handleLogin = (e) => {
         e.preventDefault()
-        if (loginForm.username === 'abril.arte1' && loginForm.password === 'ilvolo25') {
+        if (loginForm.username === import.meta.env.VITE_ADMIN_USER && loginForm.password === import.meta.env.VITE_ADMIN_PASS) {
             setIsAuthenticated(true)
             localStorage.setItem('admin_session', 'authenticated')
             setLoginError('')
@@ -1397,8 +1397,8 @@ export default function Admin() {
                                         <div
                                             key={t.id}
                                             className={`glass rounded-2xl p-6 border-l-4 transition-all ${t.destacado ? 'border-l-[#C9A962] bg-[#C9A962]/5' :
-                                                    t.aprobado ? 'border-l-green-500' :
-                                                        'border-l-yellow-500 bg-yellow-50/30'
+                                                t.aprobado ? 'border-l-green-500' :
+                                                    'border-l-yellow-500 bg-yellow-50/30'
                                                 }`}
                                         >
                                             <div className="flex items-start gap-4">
