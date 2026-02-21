@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Music, Users, ListChecks, Plus, Edit, Trash2, Play, Copy, Check, X, Home, ArrowRight, ArrowLeft, Save, Loader2, MessageSquare, Phone, Calendar, Mail, Eye, EyeOff, LogOut, Heart, FileText, Printer, DollarSign } from 'lucide-react'
+import { Music, Users, ListChecks, Plus, Edit, Trash2, Play, Copy, Check, X, Home, ArrowRight, ArrowLeft, Save, Loader2, MessageSquare, Phone, Calendar, Mail, Eye, EyeOff, LogOut, Heart, FileText, Printer, DollarSign, Star, Quote } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { supabase } from '../lib/supabase'
 
@@ -78,6 +78,10 @@ export default function Admin() {
     const [recibos, setRecibos] = useState([])
     const [loadingRecibos, setLoadingRecibos] = useState(false)
 
+    // Testimonios
+    const [testimonios, setTestimonios] = useState([])
+    const [loadingTestimonios, setLoadingTestimonios] = useState(false)
+
 
     // Cargar solicitudes
     useEffect(() => {
@@ -109,6 +113,38 @@ export default function Admin() {
         }
     }, [activeTab])
 
+    // Cargar testimonios cuando se activa la pestaña
+    useEffect(() => {
+        if (activeTab === 'testimonios') {
+            const loadTestimonios = async () => {
+                setLoadingTestimonios(true)
+                const { data, error } = await supabase
+                    .from('testimonios')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                if (!error) setTestimonios(data || [])
+                setLoadingTestimonios(false)
+            }
+            loadTestimonios()
+        }
+    }, [activeTab])
+
+    const toggleTestimonioAprobado = async (id, current) => {
+        const { error } = await supabase.from('testimonios').update({ aprobado: !current }).eq('id', id)
+        if (!error) setTestimonios(prev => prev.map(t => t.id === id ? { ...t, aprobado: !current } : t))
+    }
+
+    const toggleTestimonioDestacado = async (id, current) => {
+        const { error } = await supabase.from('testimonios').update({ destacado: !current }).eq('id', id)
+        if (!error) setTestimonios(prev => prev.map(t => t.id === id ? { ...t, destacado: !current } : t))
+    }
+
+    const deleteTestimonio = async (id) => {
+        if (!confirm('¿Eliminar este testimonio?')) return
+        const { error } = await supabase.from('testimonios').delete().eq('id', id)
+        if (!error) setTestimonios(prev => prev.filter(t => t.id !== id))
+    }
+
     const updateSolicitudEstado = async (id, estado) => {
         const { error } = await supabase
             .from('solicitudes')
@@ -124,6 +160,17 @@ export default function Admin() {
         const { error } = await supabase.from('solicitudes').delete().eq('id', id)
         if (!error) {
             setSolicitudes(prev => prev.filter(s => s.id !== id))
+        }
+    }
+
+    // Eliminar recibo
+    const deleteRecibo = async (id) => {
+        if (!confirm('¿Estás seguro de eliminar este recibo? Esta acción no se puede deshacer.')) return
+        const { error } = await supabase.from('recibos_anticipos').delete().eq('id', id)
+        if (!error) {
+            setRecibos(prev => prev.filter(r => r.id !== id))
+        } else {
+            alert('Error al eliminar el recibo: ' + error.message)
         }
     }
 
@@ -157,7 +204,8 @@ export default function Admin() {
                 concepto: reciboForm.concepto,
                 fecha_evento: reciboForm.fecha_evento || null,
                 metodo_pago: reciboForm.metodo_pago,
-                notas: reciboForm.notas || null
+                notas: reciboForm.notas || null,
+                created_at: new Date().toISOString()
             })
             if (error) throw error
             // Generate PDF and reset form
@@ -172,8 +220,9 @@ export default function Admin() {
 
     // Generar PDF para imprimir - Estilo Ticket de Compra
     const generateReciboPDF = () => {
-        const fechaEmision = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
-        const horaEmision = new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+        const ahora = new Date()
+        const fechaEmision = ahora.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Mexico_City' })
+        const horaEmision = ahora.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Mexico_City' })
         const folio = `AA-${Date.now().toString().slice(-6)}`
 
         const printWindow = window.open('', '_blank')
@@ -378,7 +427,7 @@ export default function Admin() {
                         ${reciboForm.fecha_evento ? `
                         <div class="row">
                             <span class="label">Evento</span>
-                            <span class="value">${new Date(reciboForm.fecha_evento).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                            <span class="value">${new Date(reciboForm.fecha_evento + 'T12:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Mexico_City' })}</span>
                         </div>` : ''}
                         <div class="row">
                             <span class="label">Pago</span>
@@ -567,6 +616,7 @@ export default function Admin() {
         { id: 'assign', label: 'Asignar Repertorio', icon: ListChecks },
         { id: 'solicitudes', label: 'Solicitudes', icon: MessageSquare, count: solicitudes.filter(s => s.estado === 'pendiente').length },
         { id: 'recibos', label: 'Recibos', icon: FileText },
+        { id: 'testimonios', label: 'Testimonios', icon: Heart, count: testimonios.filter(t => !t.aprobado).length },
     ]
 
     if (loading) {
@@ -1251,7 +1301,7 @@ export default function Admin() {
                                                 {recibos.map((r) => (
                                                     <tr key={r.id} className="border-b border-[#E8DDD4] hover:bg-[#FAF7F2] transition-colors">
                                                         <td className="py-3 px-2 text-[#5A5A5A]">
-                                                            {new Date(r.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })}
+                                                            {new Date(r.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', timeZone: 'America/Mexico_City' })}
                                                         </td>
                                                         <td className="py-3 px-2">
                                                             <p className="font-medium text-[#3D3426]">{r.cliente_nombre}</p>
@@ -1272,24 +1322,33 @@ export default function Admin() {
                                                             </span>
                                                         </td>
                                                         <td className="py-3 px-2 text-center">
-                                                            <button
-                                                                onClick={() => {
-                                                                    setReciboForm({
-                                                                        cliente_nombre: r.cliente_nombre,
-                                                                        cliente_telefono: r.cliente_telefono || '',
-                                                                        monto: r.monto,
-                                                                        concepto: r.concepto,
-                                                                        fecha_evento: r.fecha_evento || '',
-                                                                        metodo_pago: r.metodo_pago || 'efectivo',
-                                                                        notas: r.notas || ''
-                                                                    })
-                                                                    generateReciboPDF()
-                                                                }}
-                                                                className="p-2 text-[#C9A962] hover:bg-[#C9A962]/10 rounded-lg transition-colors"
-                                                                title="Reimprimir"
-                                                            >
-                                                                <Printer className="w-4 h-4" />
-                                                            </button>
+                                                            <div className="flex items-center justify-center gap-1">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setReciboForm({
+                                                                            cliente_nombre: r.cliente_nombre,
+                                                                            cliente_telefono: r.cliente_telefono || '',
+                                                                            monto: r.monto,
+                                                                            concepto: r.concepto,
+                                                                            fecha_evento: r.fecha_evento || '',
+                                                                            metodo_pago: r.metodo_pago || 'efectivo',
+                                                                            notas: r.notas || ''
+                                                                        })
+                                                                        generateReciboPDF()
+                                                                    }}
+                                                                    className="p-2 text-[#C9A962] hover:bg-[#C9A962]/10 rounded-lg transition-colors"
+                                                                    title="Reimprimir"
+                                                                >
+                                                                    <Printer className="w-4 h-4" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => deleteRecibo(r.id)}
+                                                                    className="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors"
+                                                                    title="Eliminar recibo"
+                                                                >
+                                                                    <Trash2 className="w-4 h-4" />
+                                                                </button>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -1298,6 +1357,103 @@ export default function Admin() {
                                     </div>
                                 )}
                             </div>
+                        </div>
+                    )}
+
+                    {/* Testimonios Tab */}
+                    {activeTab === 'testimonios' && (
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                                <h2 className="font-display text-2xl font-bold text-[#3D3426] flex items-center gap-3">
+                                    <Heart className="w-6 h-6 text-[#C9A962]" />
+                                    Testimonios de Clientes
+                                </h2>
+                                {testimonios.length > 0 && (
+                                    <div className="flex gap-4 text-sm">
+                                        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full font-medium">
+                                            {testimonios.filter(t => t.aprobado).length} Aprobados
+                                        </span>
+                                        <span className="px-3 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium">
+                                            {testimonios.filter(t => !t.aprobado).length} Pendientes
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {loadingTestimonios ? (
+                                <div className="glass rounded-2xl p-12 text-center">
+                                    <Loader2 className="w-8 h-8 animate-spin text-[#C9A962] mx-auto mb-3" />
+                                    <p className="text-[#8B7D6B]">Cargando testimonios...</p>
+                                </div>
+                            ) : testimonios.length === 0 ? (
+                                <div className="glass rounded-2xl p-12 text-center">
+                                    <Heart className="w-16 h-16 text-[#C9A962] mx-auto mb-4 opacity-50" />
+                                    <p className="text-[#8B7D6B]">No hay testimonios aún</p>
+                                    <p className="text-sm text-[#8B7D6B] mt-1">Los clientes pueden enviar testimonios desde la página principal</p>
+                                </div>
+                            ) : (
+                                <div className="grid gap-4">
+                                    {testimonios.map(t => (
+                                        <div
+                                            key={t.id}
+                                            className={`glass rounded-2xl p-6 border-l-4 transition-all ${t.destacado ? 'border-l-[#C9A962] bg-[#C9A962]/5' :
+                                                    t.aprobado ? 'border-l-green-500' :
+                                                        'border-l-yellow-500 bg-yellow-50/30'
+                                                }`}
+                                        >
+                                            <div className="flex items-start gap-4">
+                                                {t.foto_url ? (
+                                                    <img src={t.foto_url} alt={t.nombre} className="w-14 h-14 rounded-full object-cover border-2 border-[#E8DDD4] shadow" />
+                                                ) : (
+                                                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#C9A962] to-[#A68B3D] flex items-center justify-center text-white font-bold text-lg shadow flex-shrink-0">
+                                                        {t.nombre.charAt(0).toUpperCase()}
+                                                    </div>
+                                                )}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <p className="font-bold text-[#3D3426]">{t.nombre}</p>
+                                                        {t.evento && <span className="text-xs px-2 py-0.5 bg-[#E8DDD4] rounded-full text-[#6B5E4F]">{t.evento}</span>}
+                                                        {!t.aprobado && <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full font-medium">Pendiente</span>}
+                                                        {t.destacado && <span className="text-xs px-2 py-0.5 bg-[#C9A962] text-white rounded-full font-medium">⭐ Destacado</span>}
+                                                    </div>
+                                                    <div className="flex gap-0.5 mb-2">
+                                                        {[1, 2, 3, 4, 5].map(s => (
+                                                            <Star key={s} className={`w-4 h-4 ${s <= t.calificacion ? 'text-[#C9A962] fill-[#C9A962]' : 'text-[#E8DDD4]'}`} />
+                                                        ))}
+                                                    </div>
+                                                    <p className="text-[#5A5A5A] text-sm italic">"{t.mensaje}"</p>
+                                                    <p className="text-xs text-[#8B7D6B] mt-2">
+                                                        {new Date(t.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Mexico_City' })}
+                                                    </p>
+                                                </div>
+                                                <div className="flex flex-col gap-1 flex-shrink-0">
+                                                    <button
+                                                        onClick={() => toggleTestimonioAprobado(t.id, t.aprobado)}
+                                                        className={`p-2 rounded-lg transition-colors text-sm font-medium ${t.aprobado ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'}`}
+                                                        title={t.aprobado ? 'Desaprobar' : 'Aprobar'}
+                                                    >
+                                                        {t.aprobado ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => toggleTestimonioDestacado(t.id, t.destacado)}
+                                                        className={`p-2 rounded-lg transition-colors ${t.destacado ? 'bg-[#C9A962] text-white' : 'bg-[#E8DDD4] text-[#6B5E4F] hover:bg-[#C9A962]/20'}`}
+                                                        title={t.destacado ? 'Quitar destacado' : 'Destacar'}
+                                                    >
+                                                        <Star className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteTestimonio(t.id)}
+                                                        className="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors"
+                                                        title="Eliminar"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
                 </main>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Music, Heart, Calendar, Phone, Mail, MessageCircle, Instagram, Facebook, Youtube, Play, Pause, ChevronRight, Star, Users, Award, Check, MapPin } from 'lucide-react'
+import { Music, Heart, Calendar, Phone, Mail, MessageCircle, Instagram, Facebook, Youtube, Play, Pause, ChevronRight, Star, Users, Award, Check, MapPin, Camera, Send, X, Loader2, Quote } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { supabase } from '../lib/supabase'
 import Navbar from '../components/Navbar'
@@ -83,6 +83,90 @@ export default function Landing() {
             setSending(false)
         }
     }
+
+    // Testimonios
+    const [testimonios, setTestimonios] = useState([])
+    const [showTestimonioForm, setShowTestimonioForm] = useState(false)
+    const [testimonioForm, setTestimonioForm] = useState({
+        nombre: '', evento: '', mensaje: '', calificacion: 5
+    })
+    const [testimonioFoto, setTestimonioFoto] = useState(null)
+    const [sendingTestimonio, setSendingTestimonio] = useState(false)
+    const [sentTestimonio, setSentTestimonio] = useState(false)
+
+    useEffect(() => {
+        const loadTestimonios = async () => {
+            const { data } = await supabase
+                .from('testimonios')
+                .select('*')
+                .eq('aprobado', true)
+                .order('destacado', { ascending: false })
+                .order('created_at', { ascending: false })
+            if (data) setTestimonios(data)
+        }
+        loadTestimonios()
+    }, [])
+
+    const handleTestimonioSubmit = async (e) => {
+        e.preventDefault()
+        if (!testimonioForm.nombre || !testimonioForm.mensaje) {
+            alert('Por favor ingresa tu nombre y tu experiencia')
+            return
+        }
+        setSendingTestimonio(true)
+        try {
+            let foto_url = null
+            if (testimonioFoto) {
+                const fileExt = testimonioFoto.name.split('.').pop()
+                const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`
+                const { data: uploadData, error: uploadError } = await supabase.storage
+                    .from('testimonios-fotos')
+                    .upload(fileName, testimonioFoto)
+                if (uploadError) throw uploadError
+                const { data: { publicUrl } } = supabase.storage
+                    .from('testimonios-fotos')
+                    .getPublicUrl(fileName)
+                foto_url = publicUrl
+            }
+            const { error } = await supabase.from('testimonios').insert([{
+                nombre: testimonioForm.nombre,
+                evento: testimonioForm.evento || null,
+                mensaje: testimonioForm.mensaje,
+                foto_url,
+                calificacion: testimonioForm.calificacion,
+                created_at: new Date().toISOString()
+            }])
+            if (error) throw error
+            setSentTestimonio(true)
+            setTestimonioForm({ nombre: '', evento: '', mensaje: '', calificacion: 5 })
+            setTestimonioFoto(null)
+            setTimeout(() => {
+                setSentTestimonio(false)
+                setShowTestimonioForm(false)
+            }, 3000)
+        } catch (err) {
+            alert('Error al enviar: ' + err.message)
+        } finally {
+            setSendingTestimonio(false)
+        }
+    }
+
+    const StarRating = ({ value, onChange, readonly = false }) => (
+        <div className="flex gap-1">
+            {[1, 2, 3, 4, 5].map(star => (
+                <button
+                    key={star}
+                    type="button"
+                    onClick={() => !readonly && onChange?.(star)}
+                    className={`transition-all ${readonly ? 'cursor-default' : 'cursor-pointer hover:scale-125'}`}
+                >
+                    <Star
+                        className={`w-5 h-5 ${star <= value ? 'text-[#C9A962] fill-[#C9A962]' : 'text-[#E8DDD4]'}`}
+                    />
+                </button>
+            ))}
+        </div>
+    )
 
     const servicios = [
         {
@@ -287,10 +371,10 @@ export default function Landing() {
                                             onClick={() => playPause(song)}
                                             disabled={!song.audioUrl}
                                             className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-all ${song.audioUrl
-                                                    ? isCurrentPlaying
-                                                        ? 'bg-gradient-to-br from-[#C9A962] to-[#A68B3D] animate-pulse'
-                                                        : 'bg-gradient-to-br from-[#C9A962] to-[#A68B3D] group-hover:scale-110'
-                                                    : 'bg-gray-300 cursor-not-allowed'
+                                                ? isCurrentPlaying
+                                                    ? 'bg-gradient-to-br from-[#C9A962] to-[#A68B3D] animate-pulse'
+                                                    : 'bg-gradient-to-br from-[#C9A962] to-[#A68B3D] group-hover:scale-110'
+                                                : 'bg-gray-300 cursor-not-allowed'
                                                 }`}
                                         >
                                             {isCurrentPlaying ? (
@@ -556,6 +640,219 @@ export default function Landing() {
                     </div>
                 </div>
             </section>
+
+            {/* Testimonios */}
+            <section id="testimonios" className="py-20 px-6 bg-[#F5F0E8]">
+                <div className="max-w-6xl mx-auto">
+                    <div className="text-center mb-16">
+                        <p className="text-[#C9A962] uppercase tracking-widest text-sm font-semibold mb-4">Experiencias</p>
+                        <h2 className="font-display text-4xl lg:text-5xl font-bold text-[#3D3426] mb-4">Lo Que Dicen Nuestros Clientes</h2>
+                        <p className="text-[#6B5E4F] max-w-2xl mx-auto">Historias reales de quienes vivieron la magia de la música en vivo en sus eventos más especiales.</p>
+                    </div>
+
+                    {testimonios.length > 0 ? (
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
+                            {testimonios.map(t => (
+                                <div
+                                    key={t.id}
+                                    className={`relative bg-white rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border-2 overflow-hidden ${t.destacado ? 'border-[#C9A962] ring-2 ring-[#C9A962]/20' : 'border-transparent hover:border-[#C9A962]/30'
+                                        }`}
+                                >
+                                    {t.destacado && (
+                                        <div className="absolute top-4 right-4 z-10 px-4 py-1 bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white text-xs font-bold rounded-full shadow-lg">
+                                            ⭐ Destacado
+                                        </div>
+                                    )}
+
+                                    {/* Foto grande en la parte superior */}
+                                    {t.foto_url ? (
+                                        <div className="relative h-60 overflow-hidden">
+                                            <img
+                                                src={t.foto_url}
+                                                alt={t.nombre}
+                                                className="w-full h-full object-cover"
+                                            />
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                                            <div className="absolute bottom-4 left-5 right-5">
+                                                <p className="font-display text-xl font-bold text-white drop-shadow-lg">{t.nombre}</p>
+                                                {t.evento && <p className="text-[#E8D5A3] text-sm font-medium">{t.evento}</p>}
+                                                <div className="mt-1">
+                                                    <StarRating value={t.calificacion} readonly />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="relative h-36 bg-gradient-to-br from-[#C9A962] to-[#A68B3D] flex items-center justify-center">
+                                            <span className="text-6xl font-bold text-white/30">{t.nombre.charAt(0).toUpperCase()}</span>
+                                            <div className="absolute bottom-4 left-5 right-5">
+                                                <p className="font-display text-xl font-bold text-white">{t.nombre}</p>
+                                                {t.evento && <p className="text-white/80 text-sm font-medium">{t.evento}</p>}
+                                                <div className="mt-1">
+                                                    <StarRating value={t.calificacion} readonly />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Mensaje */}
+                                    <div className="p-6">
+                                        <Quote className="w-7 h-7 text-[#C9A962]/30 mb-3" />
+                                        <p className="text-[#5A5A5A] leading-relaxed italic text-[15px]">
+                                            "{t.mensaje}"
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-12 mb-12">
+                            <Quote className="w-16 h-16 text-[#C9A962]/20 mx-auto mb-4" />
+                            <p className="text-[#8B7D6B] text-lg">Sé el primero en compartir tu experiencia con Abril Arte</p>
+                        </div>
+                    )}
+
+                    <div className="text-center">
+                        <button
+                            onClick={() => setShowTestimonioForm(true)}
+                            className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold rounded-full shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all"
+                        >
+                            <Heart className="w-5 h-5" />
+                            Compartir tu Experiencia
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            {/* Modal de Testimonio */}
+            {showTestimonioForm && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                    <div className="bg-gradient-to-br from-white to-[#FAF3EB] rounded-3xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl border border-[#E8DDD4]">
+                        <div className="bg-gradient-to-r from-[#C9A962] to-[#A68B3D] p-6 rounded-t-3xl">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center">
+                                        <Heart className="w-6 h-6 text-white" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-display text-2xl font-bold text-white">Tu Experiencia</h3>
+                                        <p className="text-white/70 text-sm">Cuéntanos cómo viviste tu evento</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setShowTestimonioForm(false)} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors">
+                                    <X className="w-5 h-5 text-white" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {sentTestimonio ? (
+                            <div className="p-12 text-center">
+                                <div className="text-6xl mb-4">💖</div>
+                                <h4 className="text-xl font-bold text-[#C9A962] mb-2">¡Gracias por compartir!</h4>
+                                <p className="text-[#6B5E4F]">Tu testimonio será revisado y publicado pronto.</p>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleTestimonioSubmit} className="p-6 space-y-5">
+                                <div>
+                                    <label className="block text-sm font-semibold text-[#3D3426] mb-2">Tu Nombre *</label>
+                                    <input
+                                        type="text"
+                                        value={testimonioForm.nombre}
+                                        onChange={e => setTestimonioForm({ ...testimonioForm, nombre: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors"
+                                        placeholder="Tu nombre completo"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-[#3D3426] mb-2">Tipo de Evento</label>
+                                    <select
+                                        value={testimonioForm.evento}
+                                        onChange={e => setTestimonioForm({ ...testimonioForm, evento: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors"
+                                    >
+                                        <option value="">Selecciona una opción</option>
+                                        <option value="Boda">Boda</option>
+                                        <option value="XV Años">XV Años</option>
+                                        <option value="Evento Corporativo">Evento Corporativo</option>
+                                        <option value="Serenata">Serenata / Propuesta</option>
+                                        <option value="Ceremonia">Ceremonia Religiosa</option>
+                                        <option value="Cumpleaños">Cumpleaños</option>
+                                        <option value="Otro">Otro</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-[#3D3426] mb-2">Calificación</label>
+                                    <StarRating
+                                        value={testimonioForm.calificacion}
+                                        onChange={val => setTestimonioForm({ ...testimonioForm, calificacion: val })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-[#3D3426] mb-2">Tu Experiencia *</label>
+                                    <textarea
+                                        value={testimonioForm.mensaje}
+                                        onChange={e => setTestimonioForm({ ...testimonioForm, mensaje: e.target.value })}
+                                        rows={4}
+                                        className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors resize-none"
+                                        placeholder="Cuéntanos cómo fue tu experiencia con Abril Arte..."
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-[#3D3426] mb-2">Foto (opcional)</label>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={e => setTestimonioFoto(e.target.files[0])}
+                                        className="hidden"
+                                        id="testimonioFotoInput"
+                                    />
+                                    <label
+                                        htmlFor="testimonioFotoInput"
+                                        className="flex items-center gap-3 w-full px-4 py-4 rounded-xl border-2 border-dashed border-[#C9A962]/40 bg-[#C9A962]/5 hover:bg-[#C9A962]/10 cursor-pointer transition-all"
+                                    >
+                                        <Camera className="w-8 h-8 text-[#C9A962]" />
+                                        <div className="flex-1">
+                                            {testimonioFoto ? (
+                                                <>
+                                                    <p className="font-medium text-[#3D3426]">{testimonioFoto.name}</p>
+                                                    <p className="text-xs text-[#8B7D6B]">{(testimonioFoto.size / (1024 * 1024)).toFixed(2)} MB</p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <p className="font-medium text-[#6B5E4F]">Sube una foto de tu evento</p>
+                                                    <p className="text-xs text-[#8B7D6B]">JPG, PNG (Max 5MB)</p>
+                                                </>
+                                            )}
+                                        </div>
+                                        {testimonioFoto && <Check className="w-5 h-5 text-green-500" />}
+                                    </label>
+                                </div>
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTestimonioForm(false)}
+                                        className="flex-1 py-4 rounded-2xl border-2 border-[#E8DDD4] text-[#6B5E4F] font-semibold hover:bg-[#E8DDD4] transition-all"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        disabled={sendingTestimonio}
+                                        className="flex-1 py-4 rounded-2xl bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                    >
+                                        {sendingTestimonio ? (
+                                            <><Loader2 className="w-5 h-5 animate-spin" /> Enviando...</>
+                                        ) : (
+                                            <><Send className="w-5 h-5" /> Enviar</>
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Footer */}
             <footer className="bg-[#2A2419] text-white py-8 px-6">

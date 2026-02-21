@@ -36,6 +36,10 @@ export default function Navbar() {
                                     Nosotros
                                     <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-[#C9A962] to-[#E8D5A3] group-hover:w-full transition-all duration-300" />
                                 </a>
+                                <a href="#testimonios" className="text-white/90 hover:text-[#C9A962] transition-colors font-medium relative group">
+                                    Experiencias
+                                    <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-[#C9A962] to-[#E8D5A3] group-hover:w-full transition-all duration-300" />
+                                </a>
                             </>
                         ) : (
                             <Link to="/" className="text-white/90 hover:text-[#C9A962] transition-colors font-medium flex items-center gap-2">
@@ -63,6 +67,7 @@ export default function Navbar() {
                             <a href="#repertorio" onClick={() => setIsOpen(false)} className="block text-white/90 hover:text-[#C9A962] font-medium py-2">Repertorio</a>
                             <a href="#servicios" onClick={() => setIsOpen(false)} className="block text-white/90 hover:text-[#C9A962] font-medium py-2">Servicios</a>
                             <a href="#nosotros" onClick={() => setIsOpen(false)} className="block text-white/90 hover:text-[#C9A962] font-medium py-2">Nosotros</a>
+                            <a href="#testimonios" onClick={() => setIsOpen(false)} className="block text-white/90 hover:text-[#C9A962] font-medium py-2">Experiencias</a>
                             <a href="#contacto" onClick={() => setIsOpen(false)} className="block text-white/90 hover:text-[#C9A962] font-medium py-2">Contacto</a>
                         </>
                     ) : (
