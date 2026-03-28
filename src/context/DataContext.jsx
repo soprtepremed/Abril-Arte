@@ -294,37 +294,43 @@ export function DataProvider({ children }) {
     }
 
     const setAssignedSongs = async (clientId, songIds) => {
-        // Legacy support o uso futuro si quieres pre-asignar
-        // Por ahora mantenemos la lógica pero no es crítica en el nuevo flujo
         try {
-            const { data: current } = await supabase
+            // Leer estado actual de la tabla
+            const { data: current, error: fetchError } = await supabase
                 .from('repertorios_asignados')
                 .select('cancion_id')
                 .eq('cliente_id', clientId)
+
+            if (fetchError) throw fetchError
 
             const currentIds = current?.map(r => r.cancion_id) || []
             const toDelete = currentIds.filter(id => !songIds.includes(id))
             const toAdd = songIds.filter(id => !currentIds.includes(id))
 
             if (toDelete.length > 0) {
-                await supabase
+                const { error: deleteError } = await supabase
                     .from('repertorios_asignados')
                     .delete()
                     .eq('cliente_id', clientId)
                     .in('cancion_id', toDelete)
+                if (deleteError) throw deleteError
             }
 
             if (toAdd.length > 0) {
-                await supabase
+                const { error: insertError } = await supabase
                     .from('repertorios_asignados')
                     .insert(toAdd.map(songId => ({
                         cliente_id: clientId,
                         cancion_id: songId,
                         seleccionada: false
                     })))
+                if (insertError) throw insertError
             }
+
+            return true
         } catch (error) {
             console.error('Error asignando canciones:', error)
+            throw error // Re-throw para que el llamador reciba el error
         }
     }
 

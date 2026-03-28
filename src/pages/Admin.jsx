@@ -73,6 +73,9 @@ export default function Admin() {
     const [assignedSelected, setAssignedSelected] = useState([])
     const [currentRepertory, setCurrentRepertory] = useState({ assignedSongs: [], selectedSongs: [] })
     const [clientRepertories, setClientRepertories] = useState({})
+    const [savingRepertory, setSavingRepertory] = useState(false)
+    const [repertoryError, setRepertoryError] = useState('')
+    const [repertorySuccess, setRepertorySuccess] = useState('')
 
     // Solicitudes
     const [solicitudes, setSolicitudes] = useState([])
@@ -611,18 +614,46 @@ export default function Admin() {
 
     const assignSongsToClient = async () => {
         if (!selectedClient || availableSelected.length === 0) return
+        setSavingRepertory(true)
+        setRepertoryError('')
+        setRepertorySuccess('')
         const newAssigned = [...currentRepertory.assignedSongs, ...availableSelected]
-        await setAssignedSongs(selectedClient, newAssigned)
-        setCurrentRepertory({ ...currentRepertory, assignedSongs: newAssigned })
-        setAvailableSelected([])
+        try {
+            await setAssignedSongs(selectedClient, newAssigned)
+            const updatedRep = { ...currentRepertory, assignedSongs: newAssigned }
+            setCurrentRepertory(updatedRep)
+            // Actualizar tarjeta del cliente en tiempo real (sin recargar)
+            setClientRepertories(prev => ({ ...prev, [selectedClient]: updatedRep }))
+            setAvailableSelected([])
+            setRepertorySuccess(`✓ ${availableSelected.length} canción(es) asignada(s) correctamente`)
+            setTimeout(() => setRepertorySuccess(''), 4000)
+        } catch (err) {
+            setRepertoryError(`Error al asignar: ${err.message || 'Sin permisos en la base de datos. Revisa las políticas RLS.'}`)
+        } finally {
+            setSavingRepertory(false)
+        }
     }
 
     const removeSongsFromClient = async () => {
         if (!selectedClient || assignedSelected.length === 0) return
+        setSavingRepertory(true)
+        setRepertoryError('')
+        setRepertorySuccess('')
         const newAssigned = currentRepertory.assignedSongs.filter(id => !assignedSelected.includes(id))
-        await setAssignedSongs(selectedClient, newAssigned)
-        setCurrentRepertory({ ...currentRepertory, assignedSongs: newAssigned })
-        setAssignedSelected([])
+        try {
+            await setAssignedSongs(selectedClient, newAssigned)
+            const updatedRep = { ...currentRepertory, assignedSongs: newAssigned }
+            setCurrentRepertory(updatedRep)
+            // Actualizar tarjeta del cliente en tiempo real (sin recargar)
+            setClientRepertories(prev => ({ ...prev, [selectedClient]: updatedRep }))
+            setAssignedSelected([])
+            setRepertorySuccess(`✓ ${assignedSelected.length} canción(es) removida(s) correctamente`)
+            setTimeout(() => setRepertorySuccess(''), 4000)
+        } catch (err) {
+            setRepertoryError(`Error al remover: ${err.message || 'Sin permisos en la base de datos. Revisa las políticas RLS.'}`)
+        } finally {
+            setSavingRepertory(false)
+        }
     }
 
     const tabs = [
@@ -892,12 +923,46 @@ export default function Admin() {
                                                     {client.eventDate && <p>📅 {new Date(client.eventDate).toLocaleDateString()}</p>}
                                                 </div>
 
+                                                {/* Repertorio asignado por el admin */}
+                                                {rep.assignedSongs.length > 0 ? (
+                                                    <div className="mb-3 p-3 bg-gradient-to-r from-[#FAF3EB] to-[#F5EDD8] rounded-xl border border-[#C9A962]/30">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <Music className="w-4 h-4 text-[#C9A962]" />
+                                                                <span className="text-sm font-semibold text-[#3D3426]">Repertorio asignado</span>
+                                                            </div>
+                                                            <span className="px-2 py-0.5 bg-[#C9A962] text-white text-xs font-bold rounded-full">
+                                                                {rep.assignedSongs.length} canciones
+                                                            </span>
+                                                        </div>
+                                                        <ol className="space-y-1 max-h-36 overflow-y-auto">
+                                                            {rep.assignedSongs.map((songId, index) => {
+                                                                const song = songs.find(s => s.id === songId)
+                                                                return song ? (
+                                                                    <li key={songId} className="flex items-center gap-2 text-xs py-1 border-b border-[#C9A962]/20 last:border-0">
+                                                                        <span className="w-4 h-4 bg-[#C9A962] text-white rounded-full flex items-center justify-center font-bold text-[10px] flex-shrink-0">{index + 1}</span>
+                                                                        <span className="font-medium text-[#3D3426] truncate">{song.title}</span>
+                                                                        <span className="text-[#8B7D6B] truncate">— {song.artist}</span>
+                                                                    </li>
+                                                                ) : null
+                                                            })}
+                                                        </ol>
+                                                    </div>
+                                                ) : (
+                                                    <div className="mb-3 p-3 bg-orange-50 rounded-xl border border-orange-200">
+                                                        <div className="flex items-center gap-2">
+                                                            <ListChecks className="w-4 h-4 text-orange-400" />
+                                                            <span className="text-sm text-orange-600 font-medium">Sin repertorio asignado</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 {/* Canciones seleccionadas por el cliente */}
                                                 {rep.selectedSongs.length > 0 && (
                                                     <div className="mb-4 p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border border-green-200">
                                                         <div className="flex items-center gap-2 mb-3">
                                                             <Heart className="w-4 h-4 text-green-600" />
-                                                            <span className="font-semibold text-green-800 text-sm">Canciones que eligió ({rep.selectedSongs.length}):</span>
+                                                            <span className="font-semibold text-green-800 text-sm">Favoritas del cliente ({rep.selectedSongs.length}):</span>
                                                         </div>
                                                         <ol className="space-y-1 text-sm max-h-40 overflow-y-auto">
                                                             {rep.selectedSongs.map((songId, index) => {
@@ -914,23 +979,42 @@ export default function Admin() {
                                                     </div>
                                                 )}
 
-                                                {rep.selectedSongs.length === 0 && (
-                                                    <div className="mb-4 p-4 bg-gray-50 rounded-xl border border-gray-200 text-center">
-                                                        <p className="text-sm text-[#8B7D6B]">El cliente aún no ha seleccionado canciones</p>
+                                                {rep.assignedSongs.length > 0 && rep.selectedSongs.length === 0 && (
+                                                    <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-200 text-center">
+                                                        <p className="text-xs text-blue-600">⏳ Esperando que el cliente seleccione sus favoritas</p>
                                                     </div>
                                                 )}
 
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => openClientModal(client)} className="flex-1 p-2 rounded-lg bg-[#FAF3EB] text-[#C9A962] hover:bg-[#C9A962] hover:text-white transition-colors flex items-center justify-center gap-1 text-sm">
-                                                        <Edit className="w-4 h-4" /> Editar
+                                                <div className="flex flex-col gap-2">
+                                                    {/* Botón principal: Asignar/Desasignar */}
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedClient(client.id)
+                                                            setAvailableSelected([])
+                                                            setAssignedSelected([])
+                                                            setRepertoryError('')
+                                                            setRepertorySuccess('')
+                                                            setActiveTab('assign')
+                                                        }}
+                                                        className="w-full p-2.5 rounded-xl bg-gradient-to-r from-[#3D3426] to-[#5C4F3A] text-white flex items-center justify-center gap-2 text-sm font-semibold hover:opacity-90 transition-opacity"
+                                                    >
+                                                        <ListChecks className="w-4 h-4" />
+                                                        Asignar y Desasignar Canciones
                                                     </button>
-                                                    <button onClick={() => deleteClient(client.id)} className="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-colors">
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                    <button onClick={() => copyLink(client.code)} className="flex-1 p-2 rounded-lg bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white flex items-center justify-center gap-1 text-sm">
-                                                        {copiedCode === client.code ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                                                        {copiedCode === client.code ? '¡Copiado!' : 'Link'}
-                                                    </button>
+
+                                                    {/* Botones secundarios */}
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => openClientModal(client)} className="flex-1 p-2 rounded-lg bg-[#FAF3EB] text-[#C9A962] hover:bg-[#C9A962] hover:text-white transition-colors flex items-center justify-center gap-1 text-sm">
+                                                            <Edit className="w-4 h-4" /> Editar
+                                                        </button>
+                                                        <button onClick={() => deleteClient(client.id)} className="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-colors">
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
+                                                        <button onClick={() => copyLink(client.code)} className="flex-1 p-2 rounded-lg bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white flex items-center justify-center gap-1 text-sm">
+                                                            {copiedCode === client.code ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                                            {copiedCode === client.code ? '¡Copiado!' : 'Link'}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )
@@ -952,13 +1036,31 @@ export default function Admin() {
                                 <label className="block text-sm font-semibold text-[#3D3426] mb-2">Seleccionar Cliente:</label>
                                 <select
                                     value={selectedClient}
-                                    onChange={(e) => { setSelectedClient(e.target.value); setAvailableSelected([]); setAssignedSelected([]) }}
+                                    onChange={(e) => { setSelectedClient(e.target.value); setAvailableSelected([]); setAssignedSelected([]); setRepertoryError(''); setRepertorySuccess('') }}
                                     className="w-full max-w-md px-4 py-3 rounded-xl border-2 border-[#E8DDD4] bg-white/50 focus:border-[#C9A962] focus:outline-none"
                                 >
                                     <option value="">Seleccionar...</option>
                                     {clients.map(c => <option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
                                 </select>
                             </div>
+
+                            {/* Mensajes de estado */}
+                            {repertoryError && (
+                                <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700">
+                                    <X className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="font-semibold text-sm">Error al guardar en base de datos</p>
+                                        <p className="text-xs mt-1">{repertoryError}</p>
+                                        <p className="text-xs mt-2 text-red-600 font-medium">💡 Posible causa: La política RLS de Supabase bloquea escrituras desde rol anónimo. Ejecuta el SQL de corrección en el editor de Supabase.</p>
+                                    </div>
+                                </div>
+                            )}
+                            {repertorySuccess && (
+                                <div className="flex items-center gap-3 p-4 rounded-xl bg-green-50 border border-green-200 text-green-700">
+                                    <Check className="w-5 h-5" />
+                                    <p className="font-medium text-sm">{repertorySuccess}</p>
+                                </div>
+                            )}
 
                             {selectedClient && (
                                 <div className="grid lg:grid-cols-[1fr,auto,1fr] gap-6">
@@ -994,10 +1096,20 @@ export default function Admin() {
 
                                     {/* Actions */}
                                     <div className="flex lg:flex-col items-center justify-center gap-4 py-8">
-                                        <button onClick={assignSongsToClient} className="p-4 rounded-full bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white shadow-lg disabled:opacity-50" disabled={availableSelected.length === 0}>
-                                            <ArrowRight className="w-5 h-5" />
+                                        <button
+                                            onClick={assignSongsToClient}
+                                            className="p-4 rounded-full bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white shadow-lg disabled:opacity-50 transition-all"
+                                            disabled={availableSelected.length === 0 || savingRepertory}
+                                            title="Asignar seleccionadas"
+                                        >
+                                            {savingRepertory ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowRight className="w-5 h-5" />}
                                         </button>
-                                        <button onClick={removeSongsFromClient} className="p-4 rounded-full bg-white border-2 border-[#C9A962] text-[#C9A962] shadow-lg disabled:opacity-50" disabled={assignedSelected.length === 0}>
+                                        <button
+                                            onClick={removeSongsFromClient}
+                                            className="p-4 rounded-full bg-white border-2 border-[#C9A962] text-[#C9A962] shadow-lg disabled:opacity-50 transition-all"
+                                            disabled={assignedSelected.length === 0 || savingRepertory}
+                                            title="Quitar seleccionadas"
+                                        >
                                             <ArrowLeft className="w-5 h-5" />
                                         </button>
                                     </div>
