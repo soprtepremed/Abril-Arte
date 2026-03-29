@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Music, Users, ListChecks, Plus, Edit, Trash2, Play, Copy, Check, X, Home, ArrowRight, ArrowLeft, Save, Loader2, MessageSquare, Phone, Calendar, Mail, Eye, EyeOff, LogOut, Heart, FileText, Printer, DollarSign, Star, Quote } from 'lucide-react'
+import { Music, Users, ListChecks, Plus, Edit, Trash2, Play, Copy, Check, X, Home, ArrowRight, ArrowLeft, Save, Loader2, MessageSquare, Phone, Calendar, Mail, Eye, EyeOff, LogOut, Heart, FileText, Printer, DollarSign, Star, Quote, Camera, Upload, AlertCircle } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { supabase } from '../lib/supabase'
 
 export default function Admin() {
     const navigate = useNavigate()
     const [activeTab, setActiveTab] = useState('songs')
-    const { songs, clients, categories, loading, addSong, updateSong, deleteSong, addClient, updateClient, deleteClient, getClientRepertory, setAssignedSongs } = useData()
+    const { songs, clients, categories, loading, addSong, updateSong, deleteSong, addClient, updateClient, deleteClient, getClientRepertory, setAssignedSongs, uiConfig, updateUIConfig } = useData()
 
     // Autenticación
     const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -99,6 +99,93 @@ export default function Admin() {
     // Testimonios
     const [testimonios, setTestimonios] = useState([])
     const [loadingTestimonios, setLoadingTestimonios] = useState(false)
+
+    // UI Configuration
+    const [uploadingImageKey, setUploadingImageKey] = useState('')
+    // pendingImages: { [configKey]: { file: File, previewUrl: string } }
+    const [pendingImages, setPendingImages] = useState({})
+
+    const resizeImage = (file, maxWidth = 1920) => {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new window.Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > maxWidth) {
+                        height = Math.round((height * maxWidth) / width);
+                        width = maxWidth;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    canvas.toBlob((blob) => {
+                        resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg', lastModified: Date.now() }));
+                    }, 'image/jpeg', 0.85);
+                };
+            };
+        });
+    };
+
+    // FASE 1: Solo previsualización local, NO toca Supabase
+    const handleImageSelect = (file, configKey) => {
+        if (!file) return;
+        const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+            alert('Formato no válido. Solo se permiten JPG, PNG y WEBP.');
+            return;
+        }
+        // Liberar URL anterior si existía
+        if (pendingImages[configKey]?.previewUrl) {
+            URL.revokeObjectURL(pendingImages[configKey].previewUrl);
+        }
+        const previewUrl = URL.createObjectURL(file);
+        setPendingImages(prev => ({ ...prev, [configKey]: { file, previewUrl } }));
+    };
+
+    // FASE 2: Confirmar → ahora sí sube y guarda en Supabase
+    const handleImageConfirm = async (configKey) => {
+        const pending = pendingImages[configKey];
+        if (!pending) return;
+        setUploadingImageKey(configKey);
+        try {
+            const resizedFile = await resizeImage(pending.file, 1920);
+            const fileName = `${configKey}_${Date.now()}.jpg`;
+            const filePath = `portada/${fileName}`;
+            const { error: uploadError } = await supabase.storage
+                .from('landing-assets')
+                .upload(filePath, resizedFile);
+            if (uploadError) throw uploadError;
+            const { data: { publicUrl } } = supabase.storage
+                .from('landing-assets')
+                .getPublicUrl(filePath);
+            await updateUIConfig(configKey, publicUrl);
+            // Limpiar el estado pendiente
+            URL.revokeObjectURL(pending.previewUrl);
+            setPendingImages(prev => { const n = { ...prev }; delete n[configKey]; return n; });
+        } catch (error) {
+            console.error('Error subiendo imagen:', error);
+            alert('Error al subir la imagen: ' + error.message);
+        } finally {
+            setUploadingImageKey('');
+        }
+    };
+
+    // Cancelar: descartar la previsualización sin cambiar nada
+    const handleImageCancel = (configKey) => {
+        if (pendingImages[configKey]?.previewUrl) {
+            URL.revokeObjectURL(pendingImages[configKey].previewUrl);
+        }
+        setPendingImages(prev => { const n = { ...prev }; delete n[configKey]; return n; });
+    };
 
 
     // Cargar solicitudes
@@ -663,6 +750,7 @@ export default function Admin() {
         { id: 'solicitudes', label: 'Solicitudes', icon: MessageSquare, count: solicitudes.filter(s => s.estado === 'pendiente').length },
         { id: 'recibos', label: 'Recibos', icon: FileText },
         { id: 'testimonios', label: 'Testimonios', icon: Heart, count: testimonios.filter(t => !t.aprobado).length },
+        { id: 'portada', label: 'Diseño Portada', icon: Camera },
     ]
 
     if (loading) {
@@ -1581,6 +1669,120 @@ export default function Admin() {
                                     ))}
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* Diseño Portada Tab */}
+                    {activeTab === 'portada' && (
+                        <div className="space-y-6">
+                            <h2 className="font-display text-2xl font-bold text-[#3D3426] flex items-center gap-3">
+                                <Camera className="w-6 h-6 text-[#C9A962]" />
+                                Diseño e Imágenes de Portada
+                            </h2>
+                            
+                            <div className="glass rounded-2xl p-6">
+                                <p className="text-[#6B5E4F] mb-6">Selecciona una imagen para previsualizarla. La página <strong>no cambiará</strong> hasta que confirmes el cambio. La imagen anterior nunca se elimina.</p>
+                                
+                                <div className="space-y-8">
+                                    {[
+                                        { key: 'HERO_BG', title: 'Fondo Principal (Hero)', desc: 'Imagen gigante al entrar a la página.', defaultImg: 'images/IMG_3553 copia.jpg' },
+                                        { key: 'NOSOTROS_IMG', title: 'Imagen Quiénes Somos', desc: 'Foto que acompaña la descripción del músico/grupo.', defaultImg: 'images/IMG_3751.JPG' },
+                                        { key: 'SERVICIO_VIOLIN_IMG', title: 'Servicio: Violín Solo', desc: 'Foto del primer formato musical.', defaultImg: 'images/IMG_3567.jpg' },
+                                        { key: 'SERVICIO_TRIARTE_IMG', title: 'Servicio: TriArte', desc: 'Foto del segundo formato musical.', defaultImg: 'images/IMG_3675.jpg' },
+                                        { key: 'SERVICIO_DUO_IMG', title: 'Servicio: Dúo', desc: 'Foto del tercer formato musical.', defaultImg: 'images/IMG_3583.jpg' }
+                                    ].map(item => {
+                                        const pending = pendingImages[item.key];
+                                        const currentSrc = uiConfig[item.key] || `${import.meta.env.BASE_URL}${item.defaultImg}`;
+                                        const isUploading = uploadingImageKey === item.key;
+                                        return (
+                                            <div key={item.key} className={`p-5 border-2 rounded-2xl transition-all ${ pending ? 'border-[#C9A962] bg-[#FAF3EB]/60' : 'border-[#E8DDD4] bg-white/50' }`}>
+                                                {/* Encabezado */}
+                                                <div className="mb-4">
+                                                    <h3 className="font-bold text-lg text-[#3D3426] flex items-center gap-2">
+                                                        {item.title}
+                                                        {pending && <span className="text-xs px-2 py-0.5 bg-[#C9A962] text-white rounded-full font-medium">Pendiente de confirmar</span>}
+                                                    </h3>
+                                                    <p className="text-sm text-[#8B7D6B]">{item.desc}</p>
+                                                </div>
+
+                                                {/* Imágenes: actual + preview */}
+                                                <div className={`grid gap-4 mb-5 ${ pending ? 'grid-cols-2' : 'grid-cols-1 max-w-xs' }`}>
+                                                    {/* Imagen actual */}
+                                                    <div className="space-y-1">
+                                                        <p className="text-xs font-semibold text-[#8B7D6B] uppercase tracking-wider">{ pending ? '📌 Actual (en la web)' : 'Imagen actual' }</p>
+                                                        <div className="aspect-video rounded-xl overflow-hidden border-2 border-[#E8DDD4] bg-gray-100">
+                                                            <img src={currentSrc} alt={`Actual - ${item.title}`} className="w-full h-full object-cover" />
+                                                        </div>
+                                                    </div>
+                                                    {/* Preview nueva (solo si hay pending) */}
+                                                    {pending && (
+                                                        <div className="space-y-1">
+                                                            <p className="text-xs font-semibold text-[#C9A962] uppercase tracking-wider">✨ Nueva (previsualización)</p>
+                                                            <div className="aspect-video rounded-xl overflow-hidden border-2 border-[#C9A962] bg-gray-100 ring-2 ring-[#C9A962]/30 shadow-lg">
+                                                                <img src={pending.previewUrl} alt={`Preview - ${item.title}`} className="w-full h-full object-cover" />
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Controles */}
+                                                <div className="flex flex-wrap items-center gap-3">
+                                                    {/* Input oculto */}
+                                                    <input
+                                                        type="file"
+                                                        accept="image/jpeg, image/png, image/webp"
+                                                        onChange={(e) => { handleImageSelect(e.target.files[0], item.key); e.target.value = ''; }}
+                                                        className="hidden"
+                                                        id={`upload-${item.key}`}
+                                                        disabled={isUploading}
+                                                    />
+
+                                                    {/* Botón elegir imagen */}
+                                                    {!pending && (
+                                                        <label
+                                                            htmlFor={`upload-${item.key}`}
+                                                            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-sm transition-all cursor-pointer bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white hover:shadow-lg hover:-translate-y-0.5"
+                                                        >
+                                                            <Upload className="w-4 h-4" /> Elegir nueva imagen
+                                                        </label>
+                                                    )}
+
+                                                    {/* Acciones cuando hay preview */}
+                                                    {pending && !isUploading && (
+                                                        <>
+                                                            <label
+                                                                htmlFor={`upload-${item.key}`}
+                                                                className="inline-flex items-center gap-2 px-4 py-2 rounded-full font-medium text-sm transition-all cursor-pointer border-2 border-[#C9A962] text-[#C9A962] hover:bg-[#C9A962]/10"
+                                                            >
+                                                                <Upload className="w-4 h-4" /> Cambiar selección
+                                                            </label>
+                                                            <button
+                                                                onClick={() => handleImageCancel(item.key)}
+                                                                className="inline-flex items-center gap-2 px-4 py-2 rounded-full font-medium text-sm transition-all bg-red-50 text-red-600 hover:bg-red-100 border border-red-200"
+                                                            >
+                                                                <X className="w-4 h-4" /> Cancelar
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleImageConfirm(item.key)}
+                                                                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-sm transition-all bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:shadow-lg hover:-translate-y-0.5"
+                                                            >
+                                                                <Check className="w-4 h-4" /> Confirmar cambio
+                                                            </button>
+                                                        </>
+                                                    )}
+
+                                                    {/* Subiendo... */}
+                                                    {isUploading && (
+                                                        <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full font-semibold text-sm bg-gray-100 text-gray-500">
+                                                            <Loader2 className="w-4 h-4 animate-spin" /> Subiendo imagen...
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
                     )}
                 </main>

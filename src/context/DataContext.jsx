@@ -8,13 +8,51 @@ const categories = ['Clásica', 'Romántica', 'Pop', 'Jazz', 'Sacra', 'Balada', 
 export function DataProvider({ children }) {
     const [songs, setSongs] = useState([])
     const [clients, setClients] = useState([])
+    const [uiConfig, setUiConfig] = useState({})
     const [loading, setLoading] = useState(true)
 
     // Cargar datos al iniciar
     useEffect(() => {
         loadSongs()
         loadClients()
+        loadUIConfig()
     }, [])
+
+    // ========================================
+    // CONFIGURACIÓN UI
+    // ========================================
+    const loadUIConfig = async () => {
+        try {
+            const { data, error } = await supabase.from('configuracion_ui').select('clave, valor')
+            if (error) throw error
+            
+            const configObj = {}
+            if (data) {
+                data.forEach(item => {
+                    configObj[item.clave] = item.valor
+                })
+            }
+            setUiConfig(configObj)
+        } catch (error) {
+            console.error('Error cargando configuración UI:', error)
+        }
+    }
+
+    const updateUIConfig = async (clave, valor) => {
+        try {
+            const { error } = await supabase
+                .from('configuracion_ui')
+                .upsert({ clave, valor, updated_at: new Date() }, { onConflict: 'clave' })
+            
+            if (error) throw error
+            
+            setUiConfig(prev => ({ ...prev, [clave]: valor }))
+            return true
+        } catch (error) {
+            console.error(`Error actualizando config ${clave}:`, error)
+            throw error
+        }
+    }
 
     // ========================================
     // CANCIONES
@@ -402,7 +440,10 @@ export function DataProvider({ children }) {
         setAssignedSongs,
         setSelectedSongs,
         refreshSongs: loadSongs,
-        refreshClients: loadClients
+        refreshClients: loadClients,
+        uiConfig,
+        updateUIConfig,
+        refreshUIConfig: loadUIConfig
     }
 
     return (
