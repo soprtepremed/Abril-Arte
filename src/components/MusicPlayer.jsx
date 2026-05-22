@@ -4,6 +4,7 @@ import { useData } from '../context/DataContext'
 
 export default function MusicPlayer() {
     const [isPlaying, setIsPlaying] = useState(false)
+    const [showPrompt, setShowPrompt] = useState(false)
     const { setIsAudioPlaying } = useData()
     const audioRef = useRef(null)
     const hasStartedRef = useRef(false)
@@ -25,6 +26,7 @@ export default function MusicPlayer() {
                     setIsPlaying(true)
                     setIsAudioPlaying(true) // Sincronizar estado global
                     hasStartedRef.current = true
+                    setShowPrompt(false) // Ocultar el prompt
                     console.log(`🎵 [MusicPlayer] ¡Música de fondo iniciada con éxito! (Activada por: ${source})`)
                     removeInteractionListeners()
                 })
@@ -33,6 +35,11 @@ export default function MusicPlayer() {
                         console.warn("⚠️ [MusicPlayer] Autoplay inmediato bloqueado por el navegador. El reproductor comenzará a sonar automáticamente con tu primera interacción (clic, scroll, toque, tecla)...");
                     } else {
                         console.error(`❌ [MusicPlayer] Intento fallido de reproducir desde ${source}:`, err);
+                    }
+                    
+                    // Mostrar prompt inteligente de interacción si es bloqueado en scroll o carga inicial
+                    if (source.includes('scroll') || source.includes('Autoplay')) {
+                        setShowPrompt(true)
                     }
                 })
         }
@@ -71,6 +78,7 @@ export default function MusicPlayer() {
         if (e) e.stopPropagation() // Evitar que el clic en el botón active los listeners globales
         
         hasStartedRef.current = true
+        setShowPrompt(false)
 
         if (isPlaying) {
             audioRef.current?.pause()
@@ -105,12 +113,24 @@ export default function MusicPlayer() {
                 <span className="absolute inset-0 rounded-full bg-[#C9A962]/30 animate-ping" />
             )}
 
-            {/* Tooltip */}
+            {/* Default Tooltip on Hover */}
             <div className="absolute left-16 px-3 py-2 bg-white rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap pointer-events-none">
                 <p className="text-sm text-gray-700 font-medium">
                     {isPlaying ? '🎵 Pausar música' : '🎵 Reproducir música'}
                 </p>
             </div>
+
+            {/* Premium Autoplay Blocker Helper Tooltip */}
+            {showPrompt && !isPlaying && (
+                <div className="absolute left-16 px-4 py-2.5 bg-[#1A140C]/95 border border-[#C9A962]/30 rounded-lg shadow-2xl animate-bounce whitespace-nowrap pointer-events-none z-50">
+                    <p className="text-xs text-[#FAF3EB] font-medium flex items-center gap-2">
+                        <span className="text-[#C9A962] animate-pulse">✨</span> 
+                        Haz un clic en la página para activar la música de fondo
+                    </p>
+                    {/* Small arrow pointing to the player button */}
+                    <div className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-2.5 h-2.5 bg-[#1A140C] border-l border-b border-[#C9A962]/30 rotate-45" />
+                </div>
+            )}
         </button>
     )
 }
