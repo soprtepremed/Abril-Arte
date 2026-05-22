@@ -5,7 +5,7 @@ import { useData } from '../context/DataContext'
 
 export default function Cliente() {
     const [searchParams] = useSearchParams()
-    const { songs, fetchClientByCode, getClientRepertory, setSelectedSongs } = useData()
+    const { songs, fetchClientByCode, getClientRepertory, setSelectedSongs, setIsAudioPlaying } = useData()
 
     const [accessCode, setAccessCode] = useState(searchParams.get('code') || '')
     const [client, setClient] = useState(null)
@@ -32,14 +32,24 @@ export default function Cliente() {
     }, [])
 
     useEffect(() => {
-        audio.onended = () => setIsPlaying(false)
-        audio.onplay = () => setIsPlaying(true)
-        audio.onpause = () => setIsPlaying(false)
+        audio.onended = () => {
+            setIsPlaying(false)
+            setIsAudioPlaying(false)
+        }
+        audio.onplay = () => {
+            setIsPlaying(true)
+            setIsAudioPlaying(true)
+        }
+        audio.onpause = () => {
+            setIsPlaying(false)
+            setIsAudioPlaying(false)
+        }
 
         return () => {
             audio.pause()
+            setIsAudioPlaying(false)
         }
-    }, [audio])
+    }, [audio, setIsAudioPlaying])
 
     const handleLogin = async (e) => {
         if (e) e.preventDefault()

@@ -8,7 +8,7 @@ import WhatsAppButton from '../components/WhatsAppButton'
 import MusicPlayer from '../components/MusicPlayer'
 
 export default function Landing() {
-    const { songs, uiConfig } = useData()
+    const { songs, uiConfig, setIsAudioPlaying } = useData()
     const featuredSongs = songs.slice(0, 6)
 
     // Audio player state
@@ -17,11 +17,23 @@ export default function Landing() {
     const [audio] = useState(new Audio())
 
     useEffect(() => {
-        audio.onended = () => setIsPlaying(false)
-        audio.onplay = () => setIsPlaying(true)
-        audio.onpause = () => setIsPlaying(false)
-        return () => audio.pause()
-    }, [audio])
+        audio.onended = () => {
+            setIsPlaying(false)
+            setIsAudioPlaying(false)
+        }
+        audio.onplay = () => {
+            setIsPlaying(true)
+            setIsAudioPlaying(true)
+        }
+        audio.onpause = () => {
+            setIsPlaying(false)
+            setIsAudioPlaying(false)
+        }
+        return () => {
+            audio.pause()
+            setIsAudioPlaying(false)
+        }
+    }, [audio, setIsAudioPlaying])
 
     const playPause = (song) => {
         if (currentSong?.id === song.id) {
@@ -50,6 +62,7 @@ export default function Landing() {
     })
     const [sending, setSending] = useState(false)
     const [sent, setSent] = useState(false)
+    const [step, setStep] = useState(1) // Paso del cotizador interactivo
 
     const handleInputChange = (e) => {
         const { name, value } = e.target
@@ -75,6 +88,7 @@ export default function Landing() {
 
             setSent(true)
             setFormData({ nombre: '', telefono: '', fecha_evento: '', tipo_evento: '', formato_interes: '', mensaje: '' })
+            setStep(1) // Resetear el cotizador al paso 1
             setTimeout(() => setSent(false), 5000)
         } catch (error) {
             console.error('Error:', error)
@@ -538,102 +552,189 @@ export default function Landing() {
                             </div>
                         </div>
 
-                        <div className="bg-white rounded-3xl p-8 text-[#3D3426]">
-                            <h3 className="font-display text-2xl font-bold mb-6">Solicita Información</h3>
+                        <div className="bg-white rounded-3xl p-8 text-[#3D3426] shadow-xl border border-[#FAF3EB]">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="font-display text-2xl font-bold">Diseña tu Banda Sonora</h3>
+                                <span className="text-xs font-semibold px-3 py-1 bg-[#FAF3EB] text-[#C9A962] rounded-full uppercase tracking-wider">
+                                    Paso {step} de 4
+                                </span>
+                            </div>
+
+                            {/* Barra de Progreso */}
+                            <div className="w-full bg-gray-100 h-1.5 rounded-full mb-8 overflow-hidden">
+                                <div 
+                                    className="bg-gradient-to-r from-[#C9A962] to-[#A68B3D] h-full transition-all duration-500" 
+                                    style={{ width: `${(step / 4) * 100}%` }}
+                                />
+                            </div>
 
                             {sent ? (
                                 <div className="text-center py-12">
                                     <div className="text-6xl mb-4">✅</div>
                                     <h4 className="text-xl font-bold text-[#C9A962] mb-2">¡Solicitud Enviada!</h4>
-                                    <p className="text-[#6B5E4F]">Nos pondremos en contacto contigo pronto.</p>
+                                    <p className="text-[#6B5E4F] mb-6">Nos pondremos en contacto contigo pronto.</p>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setSent(false)} 
+                                        className="px-6 py-2 border-2 border-[#C9A962] text-[#C9A962] rounded-full hover:bg-[#C9A962] hover:text-white transition-colors"
+                                    >
+                                        Enviar otra cotización
+                                    </button>
                                 </div>
                             ) : (
-                                <form onSubmit={handleSubmit} className="space-y-5">
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Nombre *</label>
-                                        <input
-                                            type="text"
-                                            name="nombre"
-                                            value={formData.nombre}
-                                            onChange={handleInputChange}
-                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors"
-                                            placeholder="Tu nombre completo"
-                                            required
-                                        />
-                                    </div>
-                                    <div className="grid md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">Teléfono</label>
-                                            <input
-                                                type="tel"
-                                                name="telefono"
-                                                value={formData.telefono}
-                                                onChange={handleInputChange}
-                                                className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors"
-                                                placeholder="Tu teléfono"
-                                            />
+                                <form onSubmit={handleSubmit} className="space-y-6">
+                                    {/* PASO 1: Tipo de Evento */}
+                                    {step === 1 && (
+                                        <div className="space-y-4 animate-scale-in">
+                                            <p className="font-medium text-sm text-gray-700">¿Qué tipo de evento estás planeando?</p>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {['Boda', 'XV Años', 'Evento Corporativo', 'Serenata / Propuesta', 'Ceremonia Religiosa', 'Otro'].map(opt => (
+                                                    <button
+                                                        key={opt}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setFormData(prev => ({ ...prev, tipo_evento: opt }))
+                                                            setStep(2)
+                                                        }}
+                                                        className={`p-4 text-sm font-semibold rounded-2xl border-2 text-center transition-all cursor-pointer ${
+                                                            formData.tipo_evento === opt 
+                                                                ? 'border-[#C9A962] bg-[#FDF8F3] text-[#3D3426] shadow-md scale-102' 
+                                                                : 'border-[#E8DDD4] text-[#6B5E4F] hover:border-[#C9A962] hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        {opt === 'Boda' && '👰 '}
+                                                        {opt === 'XV Años' && '👑 '}
+                                                        {opt === 'Evento Corporativo' && '💼 '}
+                                                        {opt === 'Serenata / Propuesta' && '🌹 '}
+                                                        {opt === 'Ceremonia Religiosa' && '⛪ '}
+                                                        {opt === 'Otro' && '✨ '}
+                                                        {opt}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-medium mb-2">Fecha del Evento</label>
-                                            <input
-                                                type="date"
-                                                name="fecha_evento"
-                                                value={formData.fecha_evento}
-                                                onChange={handleInputChange}
-                                                className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors"
-                                            />
+                                    )}
+
+                                    {/* PASO 2: Formato de Interés */}
+                                    {step === 2 && (
+                                        <div className="space-y-4 animate-scale-in">
+                                            <p className="font-medium text-sm text-gray-700">Elige tu formato musical favorito:</p>
+                                            <div className="space-y-3">
+                                                {[
+                                                    { id: 'Violín Solo', title: '🎻 Violín Solo', desc: 'Sutileza, intimidad y elegancia pura ideal para ceremonias y propuestas.' },
+                                                    { id: 'Dúo Violín + Saxofón', title: '🎷 Dúo de Violín y Saxofón', desc: 'Fusión contemporánea dinámica ideal para banquetes y recepciones.' },
+                                                    { id: 'TriArte (Trío)', title: '🎹 TriArte | Trío', desc: 'Violín, saxo y piano en perfecta y rica armonía para eventos de gala.' },
+                                                    { id: 'No estoy seguro(a)', title: '❓ No estoy seguro(a)', desc: 'Te asesoramos con la opción ideal para tu espacio y número de invitados.' }
+                                                ].map(opt => (
+                                                    <button
+                                                        key={opt.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setFormData(prev => ({ ...prev, formato_interes: opt.id }))
+                                                            setStep(3)
+                                                        }}
+                                                        className={`w-full text-left p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                                                            formData.formato_interes === opt.id 
+                                                                ? 'border-[#C9A962] bg-[#FDF8F3] text-[#3D3426] shadow-md scale-101' 
+                                                                : 'border-[#E8DDD4] text-[#6B5E4F] hover:border-[#C9A962] hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        <p className="font-bold text-sm text-[#3D3426]">{opt.title}</p>
+                                                        <p className="text-xs text-gray-500 mt-1">{opt.desc}</p>
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Tipo de Evento</label>
-                                        <select
-                                            name="tipo_evento"
-                                            value={formData.tipo_evento}
-                                            onChange={handleInputChange}
-                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors"
-                                        >
-                                            <option value="">Selecciona una opción</option>
-                                            <option value="Boda">Boda</option>
-                                            <option value="XV Años">XV Años</option>
-                                            <option value="Evento Corporativo">Evento Corporativo</option>
-                                            <option value="Serenata / Propuesta">Serenata / Propuesta</option>
-                                            <option value="Ceremonia Religiosa">Ceremonia Religiosa</option>
-                                            <option value="Otro">Otro</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Formato de Interés</label>
-                                        <select
-                                            name="formato_interes"
-                                            value={formData.formato_interes}
-                                            onChange={handleInputChange}
-                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors"
-                                        >
-                                            <option value="">Selecciona una opción</option>
-                                            <option value="Violín Solo">Violín Solo</option>
-                                            <option value="Dúo Violín + Saxofón">Dúo Violín + Saxofón</option>
-                                            <option value="TriArte (Trío)">TriArte (Trío)</option>
-                                            <option value="No estoy seguro(a)">No estoy seguro(a)</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-2">Mensaje</label>
-                                        <textarea
-                                            name="mensaje"
-                                            value={formData.mensaje}
-                                            onChange={handleInputChange}
-                                            rows={3}
-                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors resize-none"
-                                            placeholder="Cuéntanos sobre tu evento..."
-                                        />
-                                    </div>
-                                    <button
-                                        type="submit"
-                                        disabled={sending}
-                                        className="w-full py-4 bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition-all disabled:opacity-50"
-                                    >
-                                        {sending ? 'Enviando...' : 'Enviar Solicitud'}
-                                    </button>
+                                    )}
+
+                                    {/* PASO 3: Detalles y Fecha */}
+                                    {step === 3 && (
+                                        <div className="space-y-4 animate-scale-in">
+                                            <p className="font-medium text-sm text-gray-700">Queremos saber cuándo y dónde contactarte:</p>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Teléfono o WhatsApp</label>
+                                                    <input
+                                                        type="tel"
+                                                        name="telefono"
+                                                        value={formData.telefono}
+                                                        onChange={handleInputChange}
+                                                        className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors bg-white/50"
+                                                        placeholder="Ej: 961 123 4567"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Fecha aproximada del Evento</label>
+                                                    <input
+                                                        type="date"
+                                                        name="fecha_evento"
+                                                        value={formData.fecha_evento}
+                                                        onChange={handleInputChange}
+                                                        className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors bg-white/50"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setStep(4)}
+                                                className="w-full py-4 bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition-all cursor-pointer text-center"
+                                            >
+                                                Siguiente Paso →
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* PASO 4: Nombre y Mensaje */}
+                                    {step === 4 && (
+                                        <div className="space-y-4 animate-scale-in">
+                                            <p className="font-medium text-sm text-gray-700">Por último, dinos tu nombre y cualquier mensaje:</p>
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Tu Nombre *</label>
+                                                    <input
+                                                        type="text"
+                                                        name="nombre"
+                                                        value={formData.nombre}
+                                                        onChange={handleInputChange}
+                                                        className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors bg-white/50"
+                                                        placeholder="Tu nombre completo"
+                                                        required
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-semibold text-gray-500 mb-1">Mensaje (opcional)</label>
+                                                    <textarea
+                                                        name="mensaje"
+                                                        value={formData.mensaje}
+                                                        onChange={handleInputChange}
+                                                        rows={2}
+                                                        className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none transition-colors resize-none bg-white/50"
+                                                        placeholder="Cuéntanos más detalles..."
+                                                    />
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="submit"
+                                                disabled={sending || !formData.nombre}
+                                                className="w-full py-4 bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition-all disabled:opacity-50 cursor-pointer"
+                                            >
+                                                {sending ? 'Enviando...' : '¡Enviar Solicitud y Diseñar Banda Sonora!'}
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {/* Botón de Atrás */}
+                                    {step > 1 && (
+                                        <div className="pt-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setStep(prev => prev - 1)}
+                                                className="w-full py-2 text-sm text-[#8B7D6B] hover:text-[#C9A962] font-semibold transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                                            >
+                                                ← Regresar al paso anterior
+                                            </button>
+                                        </div>
+                                    )}
                                 </form>
                             )}
                         </div>

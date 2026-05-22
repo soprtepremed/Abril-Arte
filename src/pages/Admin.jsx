@@ -293,6 +293,19 @@ export default function Admin() {
         setReciboModal({ open: true, solicitud, showPreview: false })
     }
 
+    const closeReciboModal = () => {
+        setReciboModal({ open: false, solicitud: null, showPreview: false })
+        setReciboForm({
+            cliente_nombre: '',
+            cliente_telefono: '',
+            monto: '',
+            concepto: '',
+            fecha_evento: '',
+            metodo_pago: 'efectivo',
+            notas: ''
+        })
+    }
+
     // Guardar recibo en base de datos
     const saveRecibo = async () => {
         if (!reciboForm.monto || !reciboForm.concepto) {
@@ -301,21 +314,34 @@ export default function Admin() {
         }
         setSavingRecibo(true)
         try {
-            const { error } = await supabase.from('recibos_anticipos').insert({
-                solicitud_id: reciboModal.solicitud?.id || null,
-                cliente_nombre: reciboForm.cliente_nombre,
-                cliente_telefono: reciboForm.cliente_telefono,
-                monto: parseFloat(reciboForm.monto),
-                concepto: reciboForm.concepto,
-                fecha_evento: reciboForm.fecha_evento || null,
-                metodo_pago: reciboForm.metodo_pago,
-                notas: reciboForm.notas || null,
-                created_at: new Date().toISOString()
-            })
+            const { data: newRecibo, error } = await supabase
+                .from('recibos_anticipos')
+                .insert({
+                    solicitud_id: reciboModal.solicitud?.id || null,
+                    cliente_nombre: reciboForm.cliente_nombre,
+                    cliente_telefono: reciboForm.cliente_telefono,
+                    monto: parseFloat(reciboForm.monto),
+                    concepto: reciboForm.concepto,
+                    fecha_evento: reciboForm.fecha_evento || null,
+                    metodo_pago: reciboForm.metodo_pago,
+                    notas: reciboForm.notas || null,
+                    created_at: new Date().toISOString()
+                })
+                .select()
+                .single()
+
             if (error) throw error
-            // Generate PDF and reset form
-            generateReciboPDF()
-            setReciboForm({ cliente_nombre: '', cliente_telefono: '', monto: '', concepto: '', fecha_evento: '', metodo_pago: 'efectivo', notas: '' })
+
+            // Agregar el nuevo recibo a la lista local para actualizar en tiempo real
+            if (newRecibo) {
+                setRecibos(prev => [newRecibo, ...prev])
+            }
+
+            // Cambiar a la vista previa del recibo en el modal
+            setReciboModal(prev => ({ ...prev, showPreview: true }))
+
+            // Intentar abrir la impresión del PDF
+            generateReciboPDF(reciboForm)
         } catch (err) {
             alert('Error al guardar: ' + err.message)
         } finally {
@@ -324,18 +350,35 @@ export default function Admin() {
     }
 
     // Generar PDF para imprimir - Estilo Ticket de Compra
-    const generateReciboPDF = () => {
+    const generateReciboPDF = (data) => {
+        // Si data no existe o es un evento DOM, hacer fallback a reciboForm
+        const actualData = (data && !data.nativeEvent && !data.target) ? data : reciboForm
+        const {
+            cliente_nombre = '',
+            cliente_telefono = '',
+            concepto = '',
+            fecha_evento = '',
+            metodo_pago = 'efectivo',
+            monto = 0,
+            notas = ''
+        } = actualData
+
         const ahora = new Date()
         const fechaEmision = ahora.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Mexico_City' })
         const horaEmision = ahora.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Mexico_City' })
         const folio = `AA-${Date.now().toString().slice(-6)}`
 
         const printWindow = window.open('', '_blank')
+        if (!printWindow) {
+            alert('⚠️ El navegador bloqueó la ventana emergente de impresión. Por favor, permite ventanas emergentes para este sitio para poder imprimir automáticamente, o haz clic en el botón "Imprimir PDF" para intentarlo de nuevo.')
+            return false
+        }
+
         printWindow.document.write(`
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Recibo - ${reciboForm.cliente_nombre}</title>
+                <title>Recibo - ${cliente_nombre}</title>
                 <style>
                     @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&family=Playfair+Display:wght@600;700&display=swap');
                     @page { size: auto; margin: 10mm; }
@@ -518,37 +561,37 @@ export default function Admin() {
                     <div class="datos">
                         <div class="row">
                             <span class="label">Cliente</span>
-                            <span class="value">${reciboForm.cliente_nombre}</span>
+                            <span class="value">${cliente_nombre}</span>
                         </div>
-                        ${reciboForm.cliente_telefono ? `
+                        ${cliente_telefono ? `
                         <div class="row">
                             <span class="label">Tel</span>
-                            <span class="value">${reciboForm.cliente_telefono}</span>
+                            <span class="value">${cliente_telefono}</span>
                         </div>` : ''}
                         <div class="row">
                             <span class="label">Concepto</span>
-                            <span class="value">${reciboForm.concepto}</span>
+                            <span class="value">${concepto}</span>
                         </div>
-                        ${reciboForm.fecha_evento ? `
+                        ${fecha_evento ? `
                         <div class="row">
                             <span class="label">Evento</span>
-                            <span class="value">${new Date(reciboForm.fecha_evento + 'T12:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Mexico_City' })}</span>
+                            <span class="value">${new Date(fecha_evento + 'T12:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Mexico_City' })}</span>
                         </div>` : ''}
                         <div class="row">
                             <span class="label">Pago</span>
-                            <span class="value">${reciboForm.metodo_pago.charAt(0).toUpperCase() + reciboForm.metodo_pago.slice(1)}</span>
+                            <span class="value">${metodo_pago.charAt(0).toUpperCase() + metodo_pago.slice(1)}</span>
                         </div>
                     </div>
                     
                     <div class="total-section">
                         <div class="total-label">Anticipo Recibido</div>
-                        <div class="total-value">$${parseFloat(reciboForm.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
+                        <div class="total-value">$${parseFloat(monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
                         <div class="total-text">MXN • Pesos Mexicanos</div>
                     </div>
                     
-                    ${reciboForm.notas ? `
+                    ${notas ? `
                     <div class="notas">
-                        <strong>Notas:</strong> ${reciboForm.notas}
+                        <strong>Notas:</strong> ${notas}
                     </div>` : ''}
                     
                     <div class="notas">
@@ -1549,7 +1592,7 @@ export default function Admin() {
                                                                             metodo_pago: r.metodo_pago || 'efectivo',
                                                                             notas: r.notas || ''
                                                                         })
-                                                                        generateReciboPDF()
+                                                                        generateReciboPDF(r)
                                                                     }}
                                                                     className="p-2 text-[#C9A962] hover:bg-[#C9A962]/10 rounded-lg transition-colors"
                                                                     title="Reimprimir"
@@ -2029,7 +2072,7 @@ export default function Admin() {
                                         <p className="text-white/70 text-sm">{reciboModal.showPreview ? 'Listo para imprimir' : 'Completa los datos'}</p>
                                     </div>
                                 </div>
-                                <button onClick={() => setReciboModal({ open: false, solicitud: null, showPreview: false })} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors">
+                                <button onClick={closeReciboModal} className="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors">
                                     <X className="w-5 h-5 text-white" />
                                 </button>
                             </div>
@@ -2122,7 +2165,7 @@ export default function Admin() {
                                 <div className="flex gap-3 pt-4">
                                     <button
                                         type="button"
-                                        onClick={() => setReciboModal({ open: false, solicitud: null, showPreview: false })}
+                                        onClick={closeReciboModal}
                                         className="flex-1 py-3 rounded-full border-2 border-[#E8DDD4] text-[#6B5E4F] font-medium hover:bg-[#E8DDD4] transition-colors"
                                     >
                                         Cancelar
@@ -2151,13 +2194,13 @@ export default function Admin() {
                                 </div>
                                 <div className="flex gap-3">
                                     <button
-                                        onClick={() => setReciboModal({ open: false, solicitud: null, showPreview: false })}
+                                        onClick={closeReciboModal}
                                         className="flex-1 py-3 rounded-full border-2 border-[#E8DDD4] text-[#6B5E4F] font-medium hover:bg-[#E8DDD4] transition-colors"
                                     >
                                         Cerrar
                                     </button>
                                     <button
-                                        onClick={generateReciboPDF}
+                                        onClick={() => generateReciboPDF(reciboForm)}
                                         className="flex-1 py-3 rounded-full bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold shadow-lg flex items-center justify-center gap-2"
                                     >
                                         <Printer className="w-5 h-5" />

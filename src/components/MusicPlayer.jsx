@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { Volume2, VolumeX } from 'lucide-react'
+import { useData } from '../context/DataContext'
 
 export default function MusicPlayer() {
     const [isPlaying, setIsPlaying] = useState(false)
+    const { setIsAudioPlaying } = useData()
     const audioRef = useRef(null)
     const hasStartedRef = useRef(false)
 
@@ -15,12 +17,13 @@ export default function MusicPlayer() {
         audio.load() // Iniciar la carga/buffering de fondo de inmediato
         audioRef.current = audio
 
-                const startAudio = (source) => {
+        const startAudio = (source) => {
             if (hasStartedRef.current) return
 
             audio.play()
                 .then(() => {
                     setIsPlaying(true)
+                    setIsAudioPlaying(true) // Sincronizar estado global
                     hasStartedRef.current = true
                     console.log(`🎵 [MusicPlayer] ¡Música de fondo iniciada con éxito! (Activada por: ${source})`)
                     removeInteractionListeners()
@@ -60,8 +63,9 @@ export default function MusicPlayer() {
                 audioRef.current.pause()
                 audioRef.current = null
             }
+            setIsAudioPlaying(false) // Limpiar estado global
         }
-    }, [])
+    }, [setIsAudioPlaying])
 
     const toggleMusic = (e) => {
         if (e) e.stopPropagation() // Evitar que el clic en el botón active los listeners globales
@@ -71,10 +75,12 @@ export default function MusicPlayer() {
         if (isPlaying) {
             audioRef.current?.pause()
             setIsPlaying(false)
+            setIsAudioPlaying(false)
         } else {
             audioRef.current?.play()
                 .then(() => {
                     setIsPlaying(true)
+                    setIsAudioPlaying(true)
                 })
                 .catch((err) => {
                     console.error("Error al reproducir el audio manualmente:", err)

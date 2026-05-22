@@ -10,6 +10,7 @@ export function DataProvider({ children }) {
     const [clients, setClients] = useState([])
     const [uiConfig, setUiConfig] = useState({})
     const [loading, setLoading] = useState(true)
+    const [isAudioPlaying, setIsAudioPlaying] = useState(false)
 
     // Cargar datos al iniciar
     useEffect(() => {
@@ -443,7 +444,9 @@ export function DataProvider({ children }) {
         refreshClients: loadClients,
         uiConfig,
         updateUIConfig,
-        refreshUIConfig: loadUIConfig
+        refreshUIConfig: loadUIConfig,
+        isAudioPlaying,
+        setIsAudioPlaying
     }
 
     return (
