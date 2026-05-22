@@ -5,7 +5,7 @@ import { useData } from '../context/DataContext'
 export default function MusicPlayer() {
     const [isPlaying, setIsPlaying] = useState(false)
     const [showPrompt, setShowPrompt] = useState(false)
-    const { setIsAudioPlaying } = useData()
+    const { setIsAudioPlaying, forcePauseMusicSignal } = useData()
     const audioRef = useRef(null)
     const hasStartedRef = useRef(false)
 
@@ -73,6 +73,16 @@ export default function MusicPlayer() {
             setIsAudioPlaying(false) // Limpiar estado global
         }
     }, [setIsAudioPlaying])
+
+    // Escuchar señal global de pausa (ej. cuando se reproduce un TikTok)
+    useEffect(() => {
+        if (forcePauseMusicSignal > 0 && isPlaying) {
+            audioRef.current?.pause()
+            setIsPlaying(false)
+            setIsAudioPlaying(false)
+            console.log('🎵 [MusicPlayer] Música pausada automáticamente por señal global (otro medio está sonando).')
+        }
+    }, [forcePauseMusicSignal, isPlaying, setIsAudioPlaying])
 
     const toggleMusic = (e) => {
         if (e) e.stopPropagation() // Evitar que el clic en el botón active los listeners globales

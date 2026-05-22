@@ -7,13 +7,20 @@ import { supabase } from '../lib/supabase'
 export default function Admin() {
     const navigate = useNavigate()
     const [activeTab, setActiveTab] = useState('songs')
-    const { songs, clients, categories, loading, addSong, updateSong, deleteSong, addClient, updateClient, deleteClient, getClientRepertory, setAssignedSongs, uiConfig, updateUIConfig } = useData()
+    const { 
+        songs, clients, categories, loading, addSong, updateSong, deleteSong, 
+        addClient, updateClient, deleteClient, getClientRepertory, setAssignedSongs, 
+        uiConfig, updateUIConfig,
+        tiktokVideos, loadingTiktok, addTiktokVideo, deleteTiktokVideo, updateTiktokVideo,
+        activeTiktokId, setActiveTiktokId, pauseGlobalAudio
+    } = useData()
 
     // Autenticación
     const [isAuthenticated, setIsAuthenticated] = useState(false)
     const [loginForm, setLoginForm] = useState({ username: '', password: '' })
     const [showPassword, setShowPassword] = useState(false)
     const [loginError, setLoginError] = useState('')
+    const [iframeKeys, setIframeKeys] = useState({})
 
     // Verificar sesión guardada
     useEffect(() => {
@@ -22,6 +29,61 @@ export default function Admin() {
             setIsAuthenticated(true)
         }
     }, [])
+
+    // TikTok embed diagnostics and logs for Admin Page
+    useEffect(() => {
+        if (tiktokVideos) {
+            console.log('%c[TikTok Debug - Admin] 📦 Videos de TikTok cargados en el Panel:', 'color: #C9A962; font-weight: bold;', tiktokVideos.map(v => ({
+                id: v.id,
+                titulo: v.titulo,
+                url: v.url_tiktok,
+                extractedId: extractTikTokId(v.url_tiktok),
+                iframeSrc: `https://www.tiktok.com/player/v1/${extractTikTokId(v.url_tiktok)}?autoplay=0`
+            })));
+        }
+    }, [tiktokVideos]);
+
+    useEffect(() => {
+        let lastActiveIframe = null;
+        const interval = setInterval(() => {
+            const activeEl = document.activeElement;
+            if (activeEl && activeEl.tagName === 'IFRAME') {
+                if (activeEl !== lastActiveIframe) {
+                    lastActiveIframe = activeEl;
+                    const src = activeEl.src;
+                    if (src && src.includes('tiktok.com')) {
+                        const match = src.match(/player\/v1\/(\d+)/);
+                        if (match) {
+                            const videoId = match[1];
+                            setActiveTiktokId(videoId);
+                            pauseGlobalAudio();
+                            console.log(`[TikTok Monitor] 🎬 Play detectado en iframe: ${videoId}`);
+                        }
+                    }
+                }
+            } else {
+                lastActiveIframe = null;
+            }
+        }, 300);
+
+        return () => clearInterval(interval);
+    }, [setActiveTiktokId, pauseGlobalAudio]);
+
+    // Lógica para pausar (recargar) otros iframes de TikTok cuando se activa uno
+    useEffect(() => {
+        if (activeTiktokId) {
+            setIframeKeys(prev => {
+                const next = { ...prev };
+                tiktokVideos.forEach(v => {
+                    const vId = extractTikTokId(v.url_tiktok);
+                    if (vId && vId !== activeTiktokId) {
+                        next[v.id] = Date.now() + Math.random(); // Forzar recarga del iframe para pausarlo
+                    }
+                });
+                return next;
+            });
+        }
+    }, [activeTiktokId, tiktokVideos]);
 
     const [loginLoading, setLoginLoading] = useState(false)
 
@@ -104,6 +166,90 @@ export default function Admin() {
     const [uploadingImageKey, setUploadingImageKey] = useState('')
     // pendingImages: { [configKey]: { file: File, previewUrl: string } }
     const [pendingImages, setPendingImages] = useState({})
+
+    // TikTok Video form states
+    const [tiktokForm, setTiktokForm] = useState({ titulo: '', url: '' })
+    const [savingTiktok, setSavingTiktok] = useState(false)
+    const [tiktokError, setTiktokError] = useState('')
+
+    // Estados para editar videos de TikTok existentes
+    const [editingTiktokId, setEditingTiktokId] = useState(null)
+    const [editingTiktokTitle, setEditingTiktokTitle] = useState('')
+    const [updatingTiktokId, setUpdatingTiktokId] = useState(null)
+
+    const extractTikTokId = (url) => {
+        if (!url) return null;
+        const match = url.match(/\/video\/(\d+)/) || url.match(/\/v\/(\d+)/);
+        if (match && match[1]) {
+            return match[1];
+        }
+        const numericMatch = url.match(/\/(\d{15,22})\b/);
+        if (numericMatch) return numericMatch[1];
+        return null;
+    };
+
+    const handleSaveTiktok = async (e) => {
+        e.preventDefault()
+        setTiktokError('')
+        const videoId = extractTikTokId(tiktokForm.url)
+        if (!videoId) {
+            setTiktokError('Por favor ingresa una URL de TikTok válida (debe incluir el ID del video).')
+            return
+        }
+
+        setSavingTiktok(true)
+        try {
+            const res = await addTiktokVideo({
+                titulo: tiktokForm.titulo,
+                url_tiktok: tiktokForm.url
+            })
+            if (res) {
+                setTiktokForm({ titulo: '', url: '' })
+            } else {
+                setTiktokError('Error al guardar el video de TikTok.')
+            }
+        } catch (error) {
+            setTiktokError('Error de conexión al guardar: ' + error.message)
+        } finally {
+            setSavingTiktok(false)
+        }
+    }
+
+    const handleDeleteTiktok = async (id) => {
+        if (!confirm('¿Estás seguro de que quieres eliminar este video de TikTok?')) return
+        try {
+            const success = await deleteTiktokVideo(id)
+            if (!success) {
+                alert('No se pudo eliminar el video.')
+            }
+        } catch (error) {
+            alert('Error de conexión al eliminar: ' + error.message)
+        }
+    }
+
+    const handleUpdateTiktokTitle = async (video) => {
+        if (!editingTiktokTitle.trim()) {
+            alert('El título no puede estar vacío.')
+            return
+        }
+        setUpdatingTiktokId(video.id)
+        try {
+            const res = await updateTiktokVideo(video.id, {
+                titulo: editingTiktokTitle,
+                url_tiktok: video.url_tiktok
+            })
+            if (res) {
+                setEditingTiktokId(null)
+                setEditingTiktokTitle('')
+            } else {
+                alert('Error al actualizar el título.')
+            }
+        } catch (error) {
+            alert('Error de conexión al actualizar: ' + error.message)
+        } finally {
+            setUpdatingTiktokId(null)
+        }
+    }
 
     const resizeImage = (file, maxWidth = 1920) => {
         return new Promise((resolve) => {
@@ -794,6 +940,7 @@ export default function Admin() {
         { id: 'recibos', label: 'Recibos', icon: FileText },
         { id: 'testimonios', label: 'Testimonios', icon: Heart, count: testimonios.filter(t => !t.aprobado).length },
         { id: 'portada', label: 'Diseño Portada', icon: Camera },
+        { id: 'tiktok', label: 'Videos TikTok', icon: Play },
     ]
 
     if (loading) {
@@ -1503,8 +1650,10 @@ export default function Admin() {
                                         disabled={savingRecibo || !reciboForm.cliente_nombre || !reciboForm.monto || !reciboForm.concepto}
                                         className="flex-1 py-3 rounded-xl bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
                                     >
-                                        {savingRecibo ? <Loader2 className="w-5 h-5 animate-spin" /> : <Printer className="w-5 h-5" />}
-                                        {savingRecibo ? 'Guardando...' : 'Guardar e Imprimir'}
+                                        <span className="flex items-center justify-center">
+                                            {savingRecibo ? <Loader2 className="w-5 h-5 animate-spin" /> : <Printer className="w-5 h-5" />}
+                                        </span>
+                                        <span>{savingRecibo ? 'Guardando...' : 'Guardar e Imprimir'}</span>
                                     </button>
                                 </div>
                             </div>
@@ -1825,6 +1974,163 @@ export default function Admin() {
                                         );
                                     })}
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Videos TikTok Tab */}
+                    {activeTab === 'tiktok' && (
+                        <div className="space-y-6">
+                            <h2 className="font-display text-2xl font-bold text-[#3D3426] flex items-center gap-3">
+                                <Play className="w-6 h-6 text-[#C9A962]" />
+                                Administrar Videos de TikTok
+                            </h2>
+                            
+                            {/* Formulario */}
+                            <div className="glass rounded-2xl p-6 border border-[#C9A962]/10 bg-[#FAF3EB]/20">
+                                <h3 className="font-bold text-lg text-[#3D3426] mb-4">Agregar Nuevo Video</h3>
+                                <form onSubmit={handleSaveTiktok} className="space-y-4 max-w-xl">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-[#3D3426] mb-2">Título (Opcional)</label>
+                                        <input
+                                            type="text"
+                                            value={tiktokForm.titulo}
+                                            onChange={e => setTiktokForm({ ...tiktokForm, titulo: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] bg-white focus:border-[#C9A962] outline-none transition-all"
+                                            placeholder="Ej. Boda en Antigua Bodega"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-[#3D3426] mb-2">Enlace / URL de TikTok *</label>
+                                        <input
+                                            type="url"
+                                            required
+                                            value={tiktokForm.url}
+                                            onChange={e => setTiktokForm({ ...tiktokForm, url: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] bg-white focus:border-[#C9A962] outline-none transition-all"
+                                            placeholder="https://www.tiktok.com/@usuario/video/1234567890123456789"
+                                        />
+                                        <p className="text-xs text-[#8B7D6B] mt-1">
+                                            Tip: Copia el enlace desde la barra de direcciones de tu navegador. Debe contener el ID numérico del video.
+                                        </p>
+                                    </div>
+                                    {tiktokError && (
+                                        <div className="text-red-500 text-sm flex items-center gap-2">
+                                            <AlertCircle className="w-4 h-4" /> {tiktokError}
+                                        </div>
+                                    )}
+                                    <button
+                                        type="submit"
+                                        disabled={savingTiktok}
+                                        className="px-6 py-3 bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold rounded-full shadow-lg hover:shadow-xl hover:shadow-[#C9A962]/30 transition-all flex items-center gap-2 disabled:opacity-50"
+                                    >
+                                        <span className="flex items-center justify-center">
+                                            {savingTiktok ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                                        </span>
+                                        <span>Agregar Video</span>
+                                    </button>
+                                </form>
+                            </div>
+
+                            {/* Listado / Previsualización */}
+                            <div className="glass rounded-2xl p-6 border border-[#C9A962]/10 bg-[#FAF3EB]/20">
+                                <h3 className="font-bold text-lg text-[#3D3426] mb-6">Videos Actuales</h3>
+                                {loadingTiktok ? (
+                                    <div className="text-center py-12">
+                                        <Loader2 className="w-8 h-8 animate-spin text-[#C9A962] mx-auto" />
+                                    </div>
+                                ) : tiktokVideos.length === 0 ? (
+                                    <p className="text-center text-[#8B7D6B] py-12">No hay videos de TikTok agregados aún.</p>
+                                ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 font-sans">
+                                        {tiktokVideos.map(video => {
+                                            const videoId = extractTikTokId(video.url_tiktok);
+                                            return (
+                                                <div key={video.id} className="bg-white/80 backdrop-blur-sm rounded-2xl border border-[#E8DDD4] p-4 flex flex-col justify-between hover:shadow-xl transition-all">
+                                                    <div>
+                                                        {editingTiktokId === video.id ? (
+                                                            <div className="flex items-center gap-1.5 mb-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={editingTiktokTitle}
+                                                                    onChange={e => setEditingTiktokTitle(e.target.value)}
+                                                                    className="flex-1 min-w-0 px-2 py-1 text-xs border border-[#C9A962] rounded-lg bg-white text-[#3D3426] focus:outline-none focus:ring-1 focus:ring-[#C9A962] font-medium"
+                                                                    placeholder="Título del video..."
+                                                                    disabled={updatingTiktokId === video.id}
+                                                                    autoFocus
+                                                                />
+                                                                <button
+                                                                    onClick={() => handleUpdateTiktokTitle(video)}
+                                                                    disabled={updatingTiktokId === video.id}
+                                                                    className="p-1 bg-[#C9A962] hover:bg-[#B39352] text-white rounded-md transition-colors flex items-center justify-center"
+                                                                    title="Guardar"
+                                                                >
+                                                                    {updatingTiktokId === video.id ? (
+                                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                    ) : (
+                                                                        <Check className="w-3.5 h-3.5" />
+                                                                    )}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEditingTiktokId(null)
+                                                                        setEditingTiktokTitle('')
+                                                                    }}
+                                                                    disabled={updatingTiktokId === video.id}
+                                                                    className="p-1 bg-red-50 hover:bg-red-100 text-red-500 rounded-md transition-colors border border-red-100 flex items-center justify-center"
+                                                                    title="Cancelar"
+                                                                >
+                                                                    <X className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex items-center justify-between gap-2 mb-2 group/title">
+                                                                <h4 className="font-semibold text-[#3D3426] truncate text-sm flex-1" title={video.titulo || 'Sin título'}>
+                                                                    {video.titulo || 'Momento en Vivo'}
+                                                                </h4>
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEditingTiktokId(video.id)
+                                                                        setEditingTiktokTitle(video.titulo || '')
+                                                                    }}
+                                                                    className="p-1 text-[#8B7D6B]/70 hover:text-[#C9A962] rounded hover:bg-[#FAF3EB] transition-all flex items-center justify-center cursor-pointer"
+                                                                    title="Editar nombre"
+                                                                >
+                                                                    <Edit className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                        
+                                                        <div className="aspect-[9/16] w-full bg-black rounded-xl overflow-hidden relative border border-[#E8DDD4] mb-3">
+                                                            {videoId ? (
+                                                                <iframe
+                                                                    key={iframeKeys[video.id] || video.id}
+                                                                    src={`https://www.tiktok.com/player/v1/${videoId}?autoplay=0`}
+                                                                    className="w-full h-full"
+                                                                    allowFullScreen
+                                                                    scrolling="no"
+                                                                    allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share; fullscreen"
+                                                                ></iframe>
+                                                            ) : (
+                                                                <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center text-[#8B7D6B] text-xs">
+                                                                    <AlertCircle className="w-8 h-8 text-red-400 mb-2" />
+                                                                    No se pudo extraer el ID del video. URL inválida.
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <button
+                                                        onClick={() => handleDeleteTiktok(video.id)}
+                                                        className="w-full py-2 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all flex items-center justify-center gap-2 text-sm font-medium"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" /> Eliminar Video
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -2175,8 +2481,10 @@ export default function Admin() {
                                         disabled={savingRecibo}
                                         className="flex-1 py-3 rounded-full bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white font-semibold shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
                                     >
-                                        {savingRecibo ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                                        {savingRecibo ? 'Guardando...' : 'Guardar y Continuar'}
+                                        <span className="flex items-center justify-center">
+                                            {savingRecibo ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                                        </span>
+                                        <span>{savingRecibo ? 'Guardando...' : 'Guardar y Continuar'}</span>
                                     </button>
                                 </div>
                             </div>

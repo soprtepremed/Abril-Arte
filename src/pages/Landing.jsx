@@ -7,14 +7,79 @@ import Navbar from '../components/Navbar'
 import WhatsAppButton from '../components/WhatsAppButton'
 import MusicPlayer from '../components/MusicPlayer'
 
+const extractTikTokId = (url) => {
+    if (!url) return null;
+    const match = url.match(/\/video\/(\d+)/) || url.match(/\/v\/(\d+)/) || url.match(/(\d{15,22})/);
+    return match ? match[1] : null;
+}
+
 export default function Landing() {
-    const { songs, uiConfig, setIsAudioPlaying } = useData()
+    const { songs, uiConfig, setIsAudioPlaying, tiktokVideos, loadingTiktok, activeTiktokId, setActiveTiktokId, pauseGlobalAudio } = useData()
     const featuredSongs = songs.slice(0, 6)
 
     // Audio player state
     const [currentSong, setCurrentSong] = useState(null)
     const [isPlaying, setIsPlaying] = useState(false)
     const [audio] = useState(new Audio())
+    const [iframeKeys, setIframeKeys] = useState({})
+
+    // TikTok embed diagnostics and logs
+    useEffect(() => {
+        if (tiktokVideos) {
+            console.log('%c[TikTok Debug] 📦 Videos de TikTok cargados en la Landing:', 'color: #C9A962; font-weight: bold;', tiktokVideos.map(v => ({
+                id: v.id,
+                titulo: v.titulo,
+                url: v.url_tiktok,
+                extractedId: extractTikTokId(v.url_tiktok),
+                iframeSrc: `https://www.tiktok.com/player/v1/${extractTikTokId(v.url_tiktok)}?autoplay=0`
+            })));
+        }
+    }, [tiktokVideos]);
+
+    useEffect(() => {
+        let lastActiveIframe = null;
+        const interval = setInterval(() => {
+            const activeEl = document.activeElement;
+            if (activeEl && activeEl.tagName === 'IFRAME') {
+                if (activeEl !== lastActiveIframe) {
+                    lastActiveIframe = activeEl;
+                    const src = activeEl.src;
+                    if (src && src.includes('tiktok.com')) {
+                        const match = src.match(/player\/v1\/(\d+)/);
+                        if (match) {
+                            const videoId = match[1];
+                            setActiveTiktokId(videoId);
+                            pauseGlobalAudio();
+                            if (audio && !audio.paused) {
+                                audio.pause();
+                            }
+                            console.log(`[TikTok Monitor] 🎬 Play detectado en iframe: ${videoId}`);
+                        }
+                    }
+                }
+            } else {
+                lastActiveIframe = null;
+            }
+        }, 300);
+
+        return () => clearInterval(interval);
+    }, [setActiveTiktokId, pauseGlobalAudio, audio]);
+
+    // Lógica para pausar (recargar) otros iframes de TikTok cuando se activa uno
+    useEffect(() => {
+        if (activeTiktokId) {
+            setIframeKeys(prev => {
+                const next = { ...prev };
+                tiktokVideos.forEach(v => {
+                    const vId = extractTikTokId(v.url_tiktok);
+                    if (vId && vId !== activeTiktokId) {
+                        next[v.id] = Date.now() + Math.random(); // Forzar recarga del iframe para pausarlo
+                    }
+                });
+                return next;
+            });
+        }
+    }, [activeTiktokId, tiktokVideos]);
 
     useEffect(() => {
         audio.onended = () => {
@@ -823,6 +888,62 @@ export default function Landing() {
                     </div>
                 </div>
             </section>
+
+            {/* Sección Videos de TikTok */}
+            {tiktokVideos && tiktokVideos.length > 0 && (
+                <section id="videos-tiktok" className="relative py-24 px-6 bg-[#1A140C] overflow-hidden border-b border-[#C9A962]/10">
+                    {/* Ambient Glows */}
+                    <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#C9A962]/5 rounded-full blur-[120px] pointer-events-none" />
+                    <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#C9A962]/5 rounded-full blur-[120px] pointer-events-none" />
+                    
+                    <div className="max-w-6xl mx-auto relative z-10">
+                        <div className="text-center mb-16">
+                            <p className="text-[#C9A962] uppercase tracking-[0.2em] text-xs font-semibold mb-3 flex items-center justify-center gap-2">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#C9A962] animate-pulse"></span>
+                                Momentos en Vivo
+                            </p>
+                            <h2 className="font-display text-4xl lg:text-5xl font-bold text-[#FAF3EB] mb-4">
+                                Nuestra Magia en Redes
+                            </h2>
+                            <p className="text-[#D4C4B5] max-w-2xl mx-auto text-sm lg:text-base">
+                                Descubre fragmentos de nuestras presentaciones y la vibrante atmósfera de cada celebración compartida en redes sociales.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                            {tiktokVideos.map((video) => {
+                                const videoId = extractTikTokId(video.url_tiktok);
+                                if (!videoId) return null;
+                                return (
+                                    <div 
+                                        key={video.id} 
+                                        className="relative bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl p-4 transition-all duration-500 hover:border-[#C9A962]/30 hover:bg-white/10 group shadow-xl hover:-translate-y-2"
+                                    >
+                                        <div className="aspect-[9/16] w-full bg-[#130E08] rounded-2xl overflow-hidden relative border border-white/5 shadow-inner">
+                                            <iframe
+                                                key={iframeKeys[video.id] || video.id}
+                                                src={`https://www.tiktok.com/player/v1/${videoId}?autoplay=0`}
+                                                className="w-full h-full border-0"
+                                                allowFullScreen
+                                                scrolling="no"
+                                                allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share; fullscreen"
+                                                loading="lazy"
+                                            ></iframe>
+                                        </div>
+                                        {video.titulo && (
+                                            <div className="mt-4 px-2">
+                                                <h4 className="font-display font-bold text-[#FAF3EB] text-center text-base tracking-wide truncate group-hover:text-[#C9A962] transition-colors duration-300">
+                                                    {video.titulo}
+                                                </h4>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </section>
+            )}
 
             {/* Modal de Testimonio */}
             {showTestimonioForm && (

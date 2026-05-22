@@ -11,12 +11,21 @@ export function DataProvider({ children }) {
     const [uiConfig, setUiConfig] = useState({})
     const [loading, setLoading] = useState(true)
     const [isAudioPlaying, setIsAudioPlaying] = useState(false)
+    const [forcePauseMusicSignal, setForcePauseMusicSignal] = useState(0)
+    const [tiktokVideos, setTiktokVideos] = useState([])
+    const [activeTiktokId, setActiveTiktokId] = useState(null)
+    const [loadingTiktok, setLoadingTiktok] = useState(true)
 
     // Cargar datos al iniciar
+    const pauseGlobalAudio = () => {
+        setForcePauseMusicSignal(prev => prev + 1)
+    }
+
     useEffect(() => {
         loadSongs()
         loadClients()
         loadUIConfig()
+        loadTiktokVideos()
     }, [])
 
     // ========================================
@@ -424,6 +433,83 @@ export function DataProvider({ children }) {
         }
     }
 
+    // ========================================
+    // VIDEOS TIKTOK
+    // ========================================
+    const loadTiktokVideos = async () => {
+        try {
+            setLoadingTiktok(true)
+            const { data, error } = await supabase
+                .from('videos_tiktok')
+                .select('*')
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+            setTiktokVideos(data || [])
+        } catch (error) {
+            console.error('Error cargando videos de TikTok:', error)
+        } finally {
+            setLoadingTiktok(false)
+        }
+    }
+
+    const addTiktokVideo = async (video) => {
+        try {
+            const { data, error } = await supabase
+                .from('videos_tiktok')
+                .insert({
+                    titulo: video.titulo || null,
+                    url_tiktok: video.url_tiktok
+                })
+                .select()
+                .single()
+
+            if (error) throw error
+            setTiktokVideos(prev => [data, ...prev])
+            return data
+        } catch (error) {
+            console.error('Error agregando video de TikTok:', error)
+            return null
+        }
+    }
+
+    const deleteTiktokVideo = async (id) => {
+        try {
+            const { error } = await supabase
+                .from('videos_tiktok')
+                .delete()
+                .eq('id', id)
+
+            if (error) throw error
+            setTiktokVideos(prev => prev.filter(v => v.id !== id))
+            return true
+        } catch (error) {
+            console.error('Error eliminando video de TikTok:', error)
+            return false
+        }
+    }
+
+    const updateTiktokVideo = async (id, updates) => {
+        try {
+            const { data, error } = await supabase
+                .from('videos_tiktok')
+                .update({
+                    titulo: updates.titulo,
+                    url_tiktok: updates.url_tiktok
+                })
+                .eq('id', id)
+                .select()
+                .single()
+
+            if (error) throw error
+            setTiktokVideos(prev => prev.map(v => v.id === id ? data : v))
+            return data
+        } catch (error) {
+            console.error('Error actualizando video de TikTok:', error)
+            return null
+        }
+    }
+
     const value = {
         songs,
         clients,
@@ -446,7 +532,16 @@ export function DataProvider({ children }) {
         updateUIConfig,
         refreshUIConfig: loadUIConfig,
         isAudioPlaying,
-        setIsAudioPlaying
+        setIsAudioPlaying,
+        pauseGlobalAudio,
+        forcePauseMusicSignal,
+        activeTiktokId,
+        setActiveTiktokId,
+        tiktokVideos,
+        loadingTiktok,
+        addTiktokVideo,
+        deleteTiktokVideo,
+        updateTiktokVideo
     }
 
     return (
