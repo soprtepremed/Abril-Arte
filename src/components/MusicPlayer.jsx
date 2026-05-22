@@ -3,16 +3,59 @@ import { Volume2, VolumeX } from 'lucide-react'
 
 export default function MusicPlayer() {
     const [isPlaying, setIsPlaying] = useState(false)
-    const [hasInteracted, setHasInteracted] = useState(false)
     const audioRef = useRef(null)
+    const hasStartedRef = useRef(false)
 
     useEffect(() => {
-        // Crear el elemento de audio
-        audioRef.current = new Audio('/audio/Azul Jazz - Blue Moon.mp3')
-        audioRef.current.loop = true
-        audioRef.current.volume = 0.3 // Volumen al 30%
+        // Crear el elemento de audio con precarga optimizada
+        const audio = new Audio('/audio/Azul Jazz - Blue Moon.mp3')
+        audio.loop = true
+        audio.volume = 0.3 // Volumen al 30%
+        audio.preload = 'auto' // Indicar al navegador que descargue todo el archivo de inmediato
+        audio.load() // Iniciar la carga/buffering de fondo de inmediato
+        audioRef.current = audio
+
+                const startAudio = (source) => {
+            if (hasStartedRef.current) return
+
+            audio.play()
+                .then(() => {
+                    setIsPlaying(true)
+                    hasStartedRef.current = true
+                    console.log(`🎵 [MusicPlayer] ¡Música de fondo iniciada con éxito! (Activada por: ${source})`)
+                    removeInteractionListeners()
+                })
+                .catch((err) => {
+                    if (source === 'Carga inmediata (Autoplay)') {
+                        console.warn("⚠️ [MusicPlayer] Autoplay inmediato bloqueado por el navegador. El reproductor comenzará a sonar automáticamente con tu primera interacción (clic, scroll, toque, tecla)...");
+                    } else {
+                        console.error(`❌ [MusicPlayer] Intento fallido de reproducir desde ${source}:`, err);
+                    }
+                })
+        }
+
+        const handleUserInteraction = (e) => {
+            startAudio(`Interacción de usuario (${e.type})`)
+        }
+
+        const removeInteractionListeners = () => {
+            window.removeEventListener('click', handleUserInteraction)
+            window.removeEventListener('scroll', handleUserInteraction)
+            window.removeEventListener('touchstart', handleUserInteraction)
+            window.removeEventListener('keypress', handleUserInteraction)
+        }
+
+        // 1. Intentar reproducir de forma inmediata
+        startAudio('Carga inmediata (Autoplay)')
+
+        // 2. Si el navegador lo bloquea, escuchar la primera interacción real del usuario
+        window.addEventListener('click', handleUserInteraction)
+        window.addEventListener('scroll', handleUserInteraction)
+        window.addEventListener('touchstart', handleUserInteraction)
+        window.addEventListener('keypress', handleUserInteraction)
 
         return () => {
+            removeInteractionListeners()
             if (audioRef.current) {
                 audioRef.current.pause()
                 audioRef.current = null
@@ -20,17 +63,23 @@ export default function MusicPlayer() {
         }
     }, [])
 
-    const toggleMusic = () => {
-        if (!hasInteracted) {
-            setHasInteracted(true)
-        }
+    const toggleMusic = (e) => {
+        if (e) e.stopPropagation() // Evitar que el clic en el botón active los listeners globales
+        
+        hasStartedRef.current = true
 
         if (isPlaying) {
             audioRef.current?.pause()
+            setIsPlaying(false)
         } else {
             audioRef.current?.play()
+                .then(() => {
+                    setIsPlaying(true)
+                })
+                .catch((err) => {
+                    console.error("Error al reproducir el audio manualmente:", err)
+                })
         }
-        setIsPlaying(!isPlaying)
     }
 
     return (
