@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Music, Heart, Calendar, Phone, Mail, MessageCircle, Instagram, Facebook, Youtube, Play, Pause, ChevronRight, Star, Users, Award, Check, MapPin, Camera, Send, X, Loader2, Quote } from 'lucide-react'
+import { Music, Heart, Calendar, Phone, Mail, MessageCircle, Instagram, Facebook, Youtube, Play, Pause, ChevronLeft, ChevronRight, Star, Users, Award, Check, MapPin, Camera, Send, X, Loader2, Quote } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { supabase } from '../lib/supabase'
 import Navbar from '../components/Navbar'
@@ -12,6 +12,132 @@ const extractTikTokId = (url) => {
     const match = url.match(/\/video\/(\d+)/) || url.match(/\/v\/(\d+)/) || url.match(/(\d{15,22})/);
     return match ? match[1] : null;
 }
+
+const parseFotos = (fotoUrlStr) => {
+    if (!fotoUrlStr) return [];
+    try {
+        const parsed = JSON.parse(fotoUrlStr);
+        if (Array.isArray(parsed)) return parsed;
+    } catch (e) {
+        // Fallback for single legacy photo
+    }
+    return [fotoUrlStr];
+};
+
+const TestimonialCard = ({ t }) => {
+    const fotos = parseFotos(t.foto_url);
+    const [activeIndex, setActiveIndex] = useState(0);
+
+    const handleNext = (e) => {
+        e.stopPropagation();
+        setActiveIndex(prev => (prev + 1) % fotos.length);
+    };
+
+    const handlePrev = (e) => {
+        e.stopPropagation();
+        setActiveIndex(prev => (prev - 1 + fotos.length) % fotos.length);
+    };
+
+    return (
+        <div
+            className={`relative bg-white rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border-2 overflow-hidden ${
+                t.destacado ? 'border-[#C9A962] ring-2 ring-[#C9A962]/20' : 'border-transparent hover:border-[#C9A962]/30'
+            }`}
+        >
+            {t.destacado && (
+                <div className="absolute top-4 right-4 z-10 px-4 py-1 bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white text-xs font-bold rounded-full shadow-lg">
+                    ⭐ Destacado
+                </div>
+            )}
+
+            {/* Foto grande o carrusel en la parte superior */}
+            {fotos.length > 0 ? (
+                <div className="relative h-60 overflow-hidden group/carousel">
+                    <img
+                        src={fotos[activeIndex]}
+                        alt={`${t.nombre} - Foto ${activeIndex + 1}`}
+                        className="w-full h-full object-cover transition-all duration-500"
+                    />
+                    
+                    {/* Controles del carrusel si hay más de una foto */}
+                    {fotos.length > 1 && (
+                        <>
+                            <button
+                                type="button"
+                                onClick={handlePrev}
+                                className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition-all opacity-0 group-hover/carousel:opacity-100 z-20 cursor-pointer"
+                            >
+                                <ChevronLeft className="w-5 h-5" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleNext}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 hover:bg-black/60 text-white flex items-center justify-center transition-all opacity-0 group-hover/carousel:opacity-100 z-20 cursor-pointer"
+                            >
+                                <ChevronRight className="w-5 h-5" />
+                            </button>
+                            
+                            {/* Indicadores de puntos */}
+                            <div className="absolute bottom-16 left-0 right-0 flex justify-center gap-1.5 z-10">
+                                {fotos.map((_, idx) => (
+                                    <button
+                                        key={idx}
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setActiveIndex(idx);
+                                        }}
+                                        className={`w-2 h-2 rounded-full transition-all cursor-pointer ${
+                                            idx === activeIndex ? 'bg-[#C9A962] w-4' : 'bg-white/60 hover:bg-white'
+                                        }`}
+                                    />
+                                ))}
+                            </div>
+                        </>
+                    )}
+
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
+                    <div className="absolute bottom-4 left-5 right-5 z-10">
+                        <p className="font-display text-xl font-bold text-white drop-shadow-lg">{t.nombre}</p>
+                        {t.evento && <p className="text-[#E8D5A3] text-sm font-medium">{t.evento}</p>}
+                        <div className="mt-1 flex gap-1">
+                            {[1, 2, 3, 4, 5].map(star => (
+                                <Star
+                                    key={star}
+                                    className={`w-4 h-4 ${star <= t.calificacion ? 'text-[#C9A962] fill-[#C9A962]' : 'text-white/40'}`}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="relative h-36 bg-gradient-to-br from-[#C9A962] to-[#A68B3D] flex items-center justify-center">
+                    <span className="text-6xl font-bold text-white/30">{t.nombre.charAt(0).toUpperCase()}</span>
+                    <div className="absolute bottom-4 left-5 right-5">
+                        <p className="font-display text-xl font-bold text-white">{t.nombre}</p>
+                        {t.evento && <p className="text-white/80 text-sm font-medium">{t.evento}</p>}
+                        <div className="mt-1 flex gap-1">
+                            {[1, 2, 3, 4, 5].map(star => (
+                                <Star
+                                    key={star}
+                                    className={`w-4 h-4 ${star <= t.calificacion ? 'text-[#C9A962] fill-[#C9A962]' : 'text-white/40'}`}
+                                />
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Mensaje */}
+            <div className="p-6">
+                <Quote className="w-7 h-7 text-[#C9A962]/30 mb-3" />
+                <p className="text-[#5A5A5A] leading-relaxed italic text-[15px]">
+                    "{t.mensaje}"
+                </p>
+            </div>
+        </div>
+    );
+};
 
 export default function Landing() {
     const { songs, uiConfig, setIsAudioPlaying, tiktokVideos, loadingTiktok, activeTiktokId, setActiveTiktokId, pauseGlobalAudio } = useData()
@@ -169,9 +295,22 @@ export default function Landing() {
     const [testimonioForm, setTestimonioForm] = useState({
         nombre: '', evento: '', mensaje: '', calificacion: 5
     })
-    const [testimonioFoto, setTestimonioFoto] = useState(null)
+    const [testimonioFotos, setTestimonioFotos] = useState([])
+    const [testimonioPreviews, setTestimonioPreviews] = useState([])
     const [sendingTestimonio, setSendingTestimonio] = useState(false)
     const [sentTestimonio, setSentTestimonio] = useState(false)
+
+    useEffect(() => {
+        if (testimonioFotos.length === 0) {
+            setTestimonioPreviews([])
+            return
+        }
+        const objectUrls = testimonioFotos.map(file => URL.createObjectURL(file))
+        setTestimonioPreviews(objectUrls)
+        return () => {
+            objectUrls.forEach(url => URL.revokeObjectURL(url))
+        }
+    }, [testimonioFotos])
 
     useEffect(() => {
         const loadTestimonios = async () => {
@@ -195,17 +334,21 @@ export default function Landing() {
         setSendingTestimonio(true)
         try {
             let foto_url = null
-            if (testimonioFoto) {
-                const fileExt = testimonioFoto.name.split('.').pop()
-                const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`
-                const { data: uploadData, error: uploadError } = await supabase.storage
-                    .from('testimonios-fotos')
-                    .upload(fileName, testimonioFoto)
-                if (uploadError) throw uploadError
-                const { data: { publicUrl } } = supabase.storage
-                    .from('testimonios-fotos')
-                    .getPublicUrl(fileName)
-                foto_url = publicUrl
+            if (testimonioFotos.length > 0) {
+                const uploadPromises = testimonioFotos.map(async (foto) => {
+                    const fileExt = foto.name.split('.').pop()
+                    const fileName = `${Date.now()}_${Math.random().toString(36).slice(2)}.${fileExt}`
+                    const { data: uploadData, error: uploadError } = await supabase.storage
+                        .from('testimonios-fotos')
+                        .upload(fileName, foto)
+                    if (uploadError) throw uploadError
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('testimonios-fotos')
+                        .getPublicUrl(fileName)
+                    return publicUrl
+                })
+                const uploadedUrls = await Promise.all(uploadPromises)
+                foto_url = JSON.stringify(uploadedUrls)
             }
             const { error } = await supabase.from('testimonios').insert([{
                 nombre: testimonioForm.nombre,
@@ -218,7 +361,7 @@ export default function Landing() {
             if (error) throw error
             setSentTestimonio(true)
             setTestimonioForm({ nombre: '', evento: '', mensaje: '', calificacion: 5 })
-            setTestimonioFoto(null)
+            setTestimonioFotos([])
             setTimeout(() => {
                 setSentTestimonio(false)
                 setShowTestimonioForm(false)
@@ -819,55 +962,7 @@ export default function Landing() {
                     {testimonios.length > 0 ? (
                         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
                             {testimonios.map(t => (
-                                <div
-                                    key={t.id}
-                                    className={`relative bg-white rounded-3xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 border-2 overflow-hidden ${t.destacado ? 'border-[#C9A962] ring-2 ring-[#C9A962]/20' : 'border-transparent hover:border-[#C9A962]/30'
-                                        }`}
-                                >
-                                    {t.destacado && (
-                                        <div className="absolute top-4 right-4 z-10 px-4 py-1 bg-gradient-to-r from-[#C9A962] to-[#A68B3D] text-white text-xs font-bold rounded-full shadow-lg">
-                                            ⭐ Destacado
-                                        </div>
-                                    )}
-
-                                    {/* Foto grande en la parte superior */}
-                                    {t.foto_url ? (
-                                        <div className="relative h-60 overflow-hidden">
-                                            <img
-                                                src={t.foto_url}
-                                                alt={t.nombre}
-                                                className="w-full h-full object-cover"
-                                            />
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                                            <div className="absolute bottom-4 left-5 right-5">
-                                                <p className="font-display text-xl font-bold text-white drop-shadow-lg">{t.nombre}</p>
-                                                {t.evento && <p className="text-[#E8D5A3] text-sm font-medium">{t.evento}</p>}
-                                                <div className="mt-1">
-                                                    <StarRating value={t.calificacion} readonly />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="relative h-36 bg-gradient-to-br from-[#C9A962] to-[#A68B3D] flex items-center justify-center">
-                                            <span className="text-6xl font-bold text-white/30">{t.nombre.charAt(0).toUpperCase()}</span>
-                                            <div className="absolute bottom-4 left-5 right-5">
-                                                <p className="font-display text-xl font-bold text-white">{t.nombre}</p>
-                                                {t.evento && <p className="text-white/80 text-sm font-medium">{t.evento}</p>}
-                                                <div className="mt-1">
-                                                    <StarRating value={t.calificacion} readonly />
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Mensaje */}
-                                    <div className="p-6">
-                                        <Quote className="w-7 h-7 text-[#C9A962]/30 mb-3" />
-                                        <p className="text-[#5A5A5A] leading-relaxed italic text-[15px]">
-                                            "{t.mensaje}"
-                                        </p>
-                                    </div>
-                                </div>
+                                <TestimonialCard key={t.id} t={t} />
                             ))}
                         </div>
                     ) : (
@@ -1021,11 +1116,17 @@ export default function Landing() {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-semibold text-[#3D3426] mb-2">Foto (opcional)</label>
+                                    <label className="block text-sm font-semibold text-[#3D3426] mb-2">Fotos (opcional)</label>
                                     <input
                                         type="file"
                                         accept="image/*"
-                                        onChange={e => setTestimonioFoto(e.target.files[0])}
+                                        multiple
+                                        onChange={e => {
+                                            if (e.target.files) {
+                                                const filesArray = Array.from(e.target.files)
+                                                setTestimonioFotos(prev => [...prev, ...filesArray])
+                                            }
+                                        }}
                                         className="hidden"
                                         id="testimonioFotoInput"
                                     />
@@ -1035,20 +1136,38 @@ export default function Landing() {
                                     >
                                         <Camera className="w-8 h-8 text-[#C9A962]" />
                                         <div className="flex-1">
-                                            {testimonioFoto ? (
-                                                <>
-                                                    <p className="font-medium text-[#3D3426]">{testimonioFoto.name}</p>
-                                                    <p className="text-xs text-[#8B7D6B]">{(testimonioFoto.size / (1024 * 1024)).toFixed(2)} MB</p>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <p className="font-medium text-[#6B5E4F]">Sube una foto de tu evento</p>
-                                                    <p className="text-xs text-[#8B7D6B]">JPG, PNG (Max 5MB)</p>
-                                                </>
-                                            )}
+                                            <p className="font-medium text-[#6B5E4F]">Sube fotos de tu evento</p>
+                                            <p className="text-xs text-[#8B7D6B]">Puedes seleccionar varias. JPG, PNG (Max 5MB c/u)</p>
                                         </div>
-                                        {testimonioFoto && <Check className="w-5 h-5 text-green-500" />}
                                     </label>
+
+                                    {/* Grid de Previsualización Premium */}
+                                    {testimonioFotos.length > 0 && (
+                                        <div className="grid grid-cols-3 gap-3 mt-4">
+                                            {testimonioFotos.map((file, idx) => (
+                                                <div key={idx} className="relative group aspect-square rounded-2xl overflow-hidden border border-[#E8DDD4] shadow-sm bg-white">
+                                                    <img
+                                                        src={testimonioPreviews[idx] || ''}
+                                                        alt={`Vista previa ${idx + 1}`}
+                                                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setTestimonioFotos(prev => prev.filter((_, i) => i !== idx))
+                                                        }}
+                                                        className="absolute top-1.5 right-1.5 p-1 bg-black/60 hover:bg-black/80 text-white rounded-full transition-all shadow hover:scale-110 z-10"
+                                                        title="Eliminar foto"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] truncate px-1.5 py-0.5 text-center">
+                                                        {(file.size / (1024 * 1024)).toFixed(1)} MB
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex gap-3 pt-2">
                                     <button

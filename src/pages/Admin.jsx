@@ -4,6 +4,17 @@ import { Music, Users, ListChecks, Plus, Edit, Trash2, Play, Copy, Check, X, Hom
 import { useData } from '../context/DataContext'
 import { supabase } from '../lib/supabase'
 
+const parseFotos = (fotoUrlStr) => {
+    if (!fotoUrlStr) return [];
+    try {
+        const parsed = JSON.parse(fotoUrlStr);
+        if (Array.isArray(parsed)) return parsed;
+    } catch (e) {
+        // Fallback for single legacy photo
+    }
+    return [fotoUrlStr];
+};
+
 export default function Admin() {
     const navigate = useNavigate()
     const [activeTab, setActiveTab] = useState('songs')
@@ -152,7 +163,8 @@ export default function Admin() {
         concepto: '',
         fecha_evento: '',
         metodo_pago: 'efectivo',
-        notas: ''
+        notas: '',
+        tipo: 'anticipo'
     })
     const [savingRecibo, setSavingRecibo] = useState(false)
     const [recibos, setRecibos] = useState([])
@@ -186,6 +198,15 @@ export default function Admin() {
         const numericMatch = url.match(/\/(\d{15,22})\b/);
         if (numericMatch) return numericMatch[1];
         return null;
+    };
+
+    const formatFechaLocal = (dateStr) => {
+        if (!dateStr) return '';
+        const parts = dateStr.split('T')[0].split('-');
+        if (parts.length !== 3) return dateStr;
+        const [year, month, day] = parts.map(Number);
+        const date = new Date(year, month - 1, day);
+        return date.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' });
     };
 
     const handleSaveTiktok = async (e) => {
@@ -348,17 +369,33 @@ export default function Admin() {
         loadSolicitudes()
     }, [])
 
-    // Cargar recibos cuando se activa la pestaña
+    // Cargar recibos y liquidaciones cuando se activa la pestaña
     useEffect(() => {
         if (activeTab === 'recibos') {
             const loadRecibos = async () => {
                 setLoadingRecibos(true)
-                const { data, error } = await supabase
-                    .from('recibos_anticipos')
-                    .select('*')
-                    .order('created_at', { ascending: false })
-                if (!error) setRecibos(data || [])
-                setLoadingRecibos(false)
+                try {
+                    const [anticiposRes, liquidacionesRes] = await Promise.all([
+                        supabase.from('recibos_anticipos').select('*'),
+                        supabase.from('recibos_liquidaciones').select('*')
+                    ])
+
+                    const rawAnticipos = anticiposRes.data || []
+                    const rawLiquidaciones = liquidacionesRes.data || []
+
+                    const listAnticipos = rawAnticipos.map(r => ({ ...r, tipo: 'anticipo' }))
+                    const listLiquidaciones = rawLiquidaciones.map(r => ({ ...r, tipo: 'liquidacion' }))
+
+                    const combined = [...listAnticipos, ...listLiquidaciones].sort(
+                        (a, b) => new Date(b.created_at) - new Date(a.created_at)
+                    )
+
+                    setRecibos(combined)
+                } catch (err) {
+                    console.error('Error al cargar recibos/liquidaciones:', err)
+                } finally {
+                    setLoadingRecibos(false)
+                }
             }
             loadRecibos()
         }
@@ -405,7 +442,6 @@ export default function Admin() {
             setSolicitudes(prev => prev.map(s => s.id === id ? { ...s, estado } : s))
         }
     }
-
     const deleteSolicitud = async (id) => {
         if (!confirm('¿Eliminar esta solicitud?')) return
         const { error } = await supabase.from('solicitudes').delete().eq('id', id)
@@ -415,9 +451,10 @@ export default function Admin() {
     }
 
     // Eliminar recibo
-    const deleteRecibo = async (id) => {
+    const deleteRecibo = async (id, tipo) => {
         if (!confirm('¿Estás seguro de eliminar este recibo? Esta acción no se puede deshacer.')) return
-        const { error } = await supabase.from('recibos_anticipos').delete().eq('id', id)
+        const targetTable = tipo === 'liquidacion' ? 'recibos_liquidaciones' : 'recibos_anticipos'
+        const { error } = await supabase.from(targetTable).delete().eq('id', id)
         if (!error) {
             setRecibos(prev => prev.filter(r => r.id !== id))
         } else {
@@ -426,15 +463,16 @@ export default function Admin() {
     }
 
     // Abrir modal de recibo con datos pre-llenados
-    const openReciboModal = (solicitud) => {
+    const openReciboModal = (solicitud, tipo = 'anticipo') => {
         setReciboForm({
-            cliente_nombre: solicitud.nombre || '',
-            cliente_telefono: solicitud.telefono || '',
+            cliente_nombre: solicitud ? (solicitud.nombre || '') : '',
+            cliente_telefono: solicitud ? (solicitud.telefono || '') : '',
             monto: '',
-            concepto: `${solicitud.tipo_evento || 'Evento'} - ${solicitud.formato_interes || ''}`.trim(),
-            fecha_evento: solicitud.fecha_evento || '',
+            concepto: solicitud ? `${solicitud.tipo_evento || 'Evento'} - ${solicitud.formato_interes || ''}`.trim() : '',
+            fecha_evento: solicitud ? (solicitud.fecha_evento || '') : '',
             metodo_pago: 'efectivo',
-            notas: ''
+            notas: '',
+            tipo: tipo
         })
         setReciboModal({ open: true, solicitud, showPreview: false })
     }
@@ -448,7 +486,8 @@ export default function Admin() {
             concepto: '',
             fecha_evento: '',
             metodo_pago: 'efectivo',
-            notas: ''
+            notas: '',
+            tipo: 'anticipo'
         })
     }
 
@@ -459,9 +498,11 @@ export default function Admin() {
             return
         }
         setSavingRecibo(true)
+        const isAnticipo = reciboForm.tipo === 'anticipo'
+        const targetTable = isAnticipo ? 'recibos_anticipos' : 'recibos_liquidaciones'
         try {
             const { data: newRecibo, error } = await supabase
-                .from('recibos_anticipos')
+                .from(targetTable)
                 .insert({
                     solicitud_id: reciboModal.solicitud?.id || null,
                     cliente_nombre: reciboForm.cliente_nombre,
@@ -480,14 +521,15 @@ export default function Admin() {
 
             // Agregar el nuevo recibo a la lista local para actualizar en tiempo real
             if (newRecibo) {
-                setRecibos(prev => [newRecibo, ...prev])
+                const annotatedRecibo = { ...newRecibo, tipo: reciboForm.tipo }
+                setRecibos(prev => [annotatedRecibo, ...prev])
             }
 
             // Cambiar a la vista previa del recibo en el modal
             setReciboModal(prev => ({ ...prev, showPreview: true }))
 
             // Intentar abrir la impresión del PDF
-            generateReciboPDF(reciboForm)
+            generateReciboPDF({ ...reciboForm, folio: newRecibo?.folio, created_at: newRecibo?.created_at })
         } catch (err) {
             alert('Error al guardar: ' + err.message)
         } finally {
@@ -506,13 +548,22 @@ export default function Admin() {
             fecha_evento = '',
             metodo_pago = 'efectivo',
             monto = 0,
-            notas = ''
+            notas = '',
+            tipo = 'anticipo',
+            created_at
         } = actualData
 
-        const ahora = new Date()
-        const fechaEmision = ahora.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Mexico_City' })
-        const horaEmision = ahora.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Mexico_City' })
-        const folio = `AA-${Date.now().toString().slice(-6)}`
+        const ahora = created_at ? new Date(created_at) : new Date()
+        const fechaEmision = ahora.toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })
+        const horaEmision = ahora.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+        const folio = actualData.folio ? `AA-${String(actualData.folio).padStart(6, '0')}` : `AA-${ahora.getTime().toString().slice(-6)}`
+
+        const esAnticipo = tipo === 'anticipo'
+        const tituloRecibo = esAnticipo ? 'Recibo de Anticipo' : 'Recibo de Liquidación'
+        const labelMonto = esAnticipo ? 'Anticipo Recibido' : 'Liquidación Recibida'
+        const notaFooter = esAnticipo 
+            ? 'El saldo restante deberá cubrirse antes del evento.' 
+            : 'Servicio liquidado en su totalidad. ¡Gracias!'
 
         const printWindow = window.open('', '_blank')
         if (!printWindow) {
@@ -702,7 +753,7 @@ export default function Admin() {
                         <div class="fecha">${fechaEmision} • ${horaEmision}</div>
                     </div>
                     
-                    <div class="titulo">Recibo de Anticipo</div>
+                    <div class="titulo">${tituloRecibo}</div>
                     
                     <div class="datos">
                         <div class="row">
@@ -721,7 +772,7 @@ export default function Admin() {
                         ${fecha_evento ? `
                         <div class="row">
                             <span class="label">Evento</span>
-                            <span class="value">${new Date(fecha_evento + 'T12:00:00').toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Mexico_City' })}</span>
+                            <span class="value">${formatFechaLocal(fecha_evento)}</span>
                         </div>` : ''}
                         <div class="row">
                             <span class="label">Pago</span>
@@ -730,7 +781,7 @@ export default function Admin() {
                     </div>
                     
                     <div class="total-section">
-                        <div class="total-label">Anticipo Recibido</div>
+                        <div class="total-label">${labelMonto}</div>
                         <div class="total-value">$${parseFloat(monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</div>
                         <div class="total-text">MXN • Pesos Mexicanos</div>
                     </div>
@@ -741,7 +792,7 @@ export default function Admin() {
                     </div>` : ''}
                     
                     <div class="notas">
-                        El saldo restante deberá cubrirse antes del evento.
+                        ${notaFooter}
                     </div>
                     
                     <div class="footer">
@@ -1478,7 +1529,7 @@ export default function Admin() {
                                                         {s.fecha_evento && (
                                                             <span className="flex items-center gap-1">
                                                                 <Calendar className="w-4 h-4" />
-                                                                {new Date(s.fecha_evento).toLocaleDateString('es-MX')}
+                                                                {formatFechaLocal(s.fecha_evento)}
                                                             </span>
                                                         )}
                                                     </div>
@@ -1559,7 +1610,7 @@ export default function Admin() {
 
                             {/* Formulario de Recibo */}
                             <div className="glass rounded-2xl p-6">
-                                <h3 className="font-display text-xl font-bold text-[#3D3426] mb-6">Generar Recibo de Anticipo</h3>
+                                <h3 className="font-display text-xl font-bold text-[#3D3426] mb-6">Generar Recibo de {reciboForm.tipo === 'liquidacion' ? 'Liquidación' : 'Anticipo'}</h3>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-[#3D3426] mb-2">Cliente *</label>
@@ -1582,7 +1633,18 @@ export default function Admin() {
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Monto del Anticipo *</label>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Tipo de Recibo *</label>
+                                        <select
+                                            value={reciboForm.tipo}
+                                            onChange={e => setReciboForm({ ...reciboForm, tipo: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none font-semibold text-[#3D3426]"
+                                        >
+                                            <option value="anticipo">Anticipo</option>
+                                            <option value="liquidacion">Liquidación</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Monto {reciboForm.tipo === 'liquidacion' ? 'de la Liquidación' : 'del Anticipo'} *</label>
                                         <div className="relative">
                                             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B5E4F] font-semibold">$</span>
                                             <input
@@ -1608,6 +1670,15 @@ export default function Admin() {
                                             <option value="tarjeta">Tarjeta</option>
                                         </select>
                                     </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Fecha del Evento</label>
+                                        <input
+                                            type="date"
+                                            value={reciboForm.fecha_evento}
+                                            onChange={e => setReciboForm({ ...reciboForm, fecha_evento: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
+                                        />
+                                    </div>
                                     <div className="md:col-span-2">
                                         <label className="block text-sm font-medium text-[#3D3426] mb-2">Concepto *</label>
                                         <input
@@ -1618,16 +1689,7 @@ export default function Admin() {
                                             placeholder="Ej: Boda - Trío de cuerdas en ceremonia"
                                         />
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Fecha del Evento</label>
-                                        <input
-                                            type="date"
-                                            value={reciboForm.fecha_evento}
-                                            onChange={e => setReciboForm({ ...reciboForm, fecha_evento: e.target.value })}
-                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none"
-                                        />
-                                    </div>
-                                    <div>
+                                    <div className="md:col-span-2">
                                         <label className="block text-sm font-medium text-[#3D3426] mb-2">Notas (opcional)</label>
                                         <input
                                             type="text"
@@ -1640,7 +1702,7 @@ export default function Admin() {
                                 </div>
                                 <div className="flex gap-3 mt-6">
                                     <button
-                                        onClick={() => setReciboForm({ cliente_nombre: '', cliente_telefono: '', monto: '', concepto: '', fecha_evento: '', metodo_pago: 'efectivo', notas: '' })}
+                                        onClick={() => setReciboForm({ cliente_nombre: '', cliente_telefono: '', monto: '', concepto: '', fecha_evento: '', metodo_pago: 'efectivo', notas: '', tipo: 'anticipo' })}
                                         className="px-6 py-3 rounded-xl border-2 border-[#E8DDD4] text-[#6B5E4F] font-medium hover:bg-[#E8DDD4] transition-colors"
                                     >
                                         Limpiar
@@ -1666,16 +1728,22 @@ export default function Admin() {
                                         Historial de Ventas
                                     </h3>
                                     {recibos.length > 0 && (
-                                        <div className="flex gap-4">
+                                        <div className="flex gap-6">
                                             <div className="text-right">
                                                 <p className="text-xs text-[#8B7D6B]">Total Anticipos</p>
-                                                <p className="text-lg font-bold text-[#C9A962]">
-                                                    ${recibos.reduce((sum, r) => sum + parseFloat(r.monto || 0), 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                                                <p className="text-base font-bold text-[#C9A962]">
+                                                    ${recibos.filter(r => r.tipo === 'anticipo').reduce((sum, r) => sum + parseFloat(r.monto || 0), 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
                                                 </p>
                                             </div>
                                             <div className="text-right">
-                                                <p className="text-xs text-[#8B7D6B]">Recibos</p>
-                                                <p className="text-lg font-bold text-[#3D3426]">{recibos.length}</p>
+                                                <p className="text-xs text-[#8B7D6B]">Total Liquidaciones</p>
+                                                <p className="text-base font-bold text-[#A68B3D]">
+                                                    ${recibos.filter(r => r.tipo === 'liquidacion').reduce((sum, r) => sum + parseFloat(r.monto || 0), 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs text-[#8B7D6B]">Total Recibos</p>
+                                                <p className="text-base font-bold text-[#3D3426]">{recibos.length}</p>
                                             </div>
                                         </div>
                                     )}
@@ -1699,49 +1767,34 @@ export default function Admin() {
                                                     <th className="text-left py-3 px-2 text-[#6B5E4F] font-semibold">Fecha</th>
                                                     <th className="text-left py-3 px-2 text-[#6B5E4F] font-semibold">Cliente</th>
                                                     <th className="text-left py-3 px-2 text-[#6B5E4F] font-semibold">Concepto</th>
+                                                    <th className="text-left py-3 px-2 text-[#6B5E4F] font-semibold">Tipo</th>
                                                     <th className="text-right py-3 px-2 text-[#6B5E4F] font-semibold">Monto</th>
-                                                    <th className="text-center py-3 px-2 text-[#6B5E4F] font-semibold">Pago</th>
                                                     <th className="text-center py-3 px-2 text-[#6B5E4F] font-semibold">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {recibos.map((r) => (
-                                                    <tr key={r.id} className="border-b border-[#E8DDD4] hover:bg-[#FAF7F2] transition-colors">
+                                                    <tr key={`${r.tipo}-${r.id}`} className="border-b border-[#E8DDD4] hover:bg-[#FAF7F2] transition-colors">
                                                         <td className="py-3 px-2 text-[#5A5A5A]">
-                                                            {new Date(r.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', timeZone: 'America/Mexico_City' })}
+                                                            {new Date(r.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })}
                                                         </td>
                                                         <td className="py-3 px-2">
                                                             <p className="font-medium text-[#3D3426]">{r.cliente_nombre}</p>
-                                                            {r.cliente_telefono && (
-                                                                <p className="text-xs text-[#8B7D6B]">{r.cliente_telefono}</p>
-                                                            )}
                                                         </td>
-                                                        <td className="py-3 px-2 text-[#5A5A5A] max-w-[200px] truncate">{r.concepto}</td>
+                                                        <td className="py-3 px-2 text-[#5A5A5A] truncate max-w-[150px]">{r.concepto}</td>
+                                                        <td className="py-3 px-2">
+                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${r.tipo === 'anticipo' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                {r.tipo === 'anticipo' ? 'Anticipo' : 'Liquidación'}
+                                                            </span>
+                                                        </td>
                                                         <td className="py-3 px-2 text-right font-bold text-[#C9A962]">
                                                             ${parseFloat(r.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
-                                                        </td>
-                                                        <td className="py-3 px-2 text-center">
-                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${r.metodo_pago === 'efectivo' ? 'bg-green-100 text-green-700' :
-                                                                r.metodo_pago === 'transferencia' ? 'bg-blue-100 text-blue-700' :
-                                                                    'bg-purple-100 text-purple-700'
-                                                                }`}>
-                                                                {r.metodo_pago?.charAt(0).toUpperCase() + r.metodo_pago?.slice(1)}
-                                                            </span>
                                                         </td>
                                                         <td className="py-3 px-2 text-center">
                                                             <div className="flex items-center justify-center gap-1">
                                                                 <button
                                                                     onClick={() => {
-                                                                        setReciboForm({
-                                                                            cliente_nombre: r.cliente_nombre,
-                                                                            cliente_telefono: r.cliente_telefono || '',
-                                                                            monto: r.monto,
-                                                                            concepto: r.concepto,
-                                                                            fecha_evento: r.fecha_evento || '',
-                                                                            metodo_pago: r.metodo_pago || 'efectivo',
-                                                                            notas: r.notas || ''
-                                                                        })
-                                                                        generateReciboPDF(r)
+                                                                        generateReciboPDF({ ...r, created_at: r.created_at })
                                                                     }}
                                                                     className="p-2 text-[#C9A962] hover:bg-[#C9A962]/10 rounded-lg transition-colors"
                                                                     title="Reimprimir"
@@ -1749,7 +1802,7 @@ export default function Admin() {
                                                                     <Printer className="w-4 h-4" />
                                                                 </button>
                                                                 <button
-                                                                    onClick={() => deleteRecibo(r.id)}
+                                                                    onClick={() => deleteRecibo(r.id, r.tipo)}
                                                                     className="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors"
                                                                     title="Eliminar recibo"
                                                                 >
@@ -1800,65 +1853,89 @@ export default function Admin() {
                                 </div>
                             ) : (
                                 <div className="grid gap-4">
-                                    {testimonios.map(t => (
-                                        <div
-                                            key={t.id}
-                                            className={`glass rounded-2xl p-6 border-l-4 transition-all ${t.destacado ? 'border-l-[#C9A962] bg-[#C9A962]/5' :
-                                                t.aprobado ? 'border-l-green-500' :
-                                                    'border-l-yellow-500 bg-yellow-50/30'
-                                                }`}
-                                        >
-                                            <div className="flex items-start gap-4">
-                                                {t.foto_url ? (
-                                                    <img src={t.foto_url} alt={t.nombre} className="w-14 h-14 rounded-full object-cover border-2 border-[#E8DDD4] shadow" />
-                                                ) : (
-                                                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#C9A962] to-[#A68B3D] flex items-center justify-center text-white font-bold text-lg shadow flex-shrink-0">
-                                                        {t.nombre.charAt(0).toUpperCase()}
+                                    {testimonios.map(t => {
+                                        const fotos = parseFotos(t.foto_url);
+                                        return (
+                                            <div
+                                                key={t.id}
+                                                className={`glass rounded-2xl p-6 border-l-4 transition-all ${t.destacado ? 'border-l-[#C9A962] bg-[#C9A962]/5' :
+                                                    t.aprobado ? 'border-l-green-500' :
+                                                        'border-l-yellow-500 bg-yellow-50/30'
+                                                    }`}
+                                            >
+                                                <div className="flex items-start gap-4">
+                                                    {fotos.length > 0 ? (
+                                                        <img src={fotos[0]} alt={t.nombre} className="w-14 h-14 rounded-full object-cover border-2 border-[#E8DDD4] shadow flex-shrink-0" />
+                                                    ) : (
+                                                        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-[#C9A962] to-[#A68B3D] flex items-center justify-center text-white font-bold text-lg shadow flex-shrink-0">
+                                                            {t.nombre.charAt(0).toUpperCase()}
+                                                        </div>
+                                                    )}
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <p className="font-bold text-[#3D3426]">{t.nombre}</p>
+                                                            {t.evento && <span className="text-xs px-2 py-0.5 bg-[#E8DDD4] rounded-full text-[#6B5E4F]">{t.evento}</span>}
+                                                            {!t.aprobado && <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full font-medium">Pendiente</span>}
+                                                            {t.destacado && <span className="text-xs px-2 py-0.5 bg-[#C9A962] text-white rounded-full font-medium">⭐ Destacado</span>}
+                                                        </div>
+                                                        <div className="flex gap-0.5 mb-2">
+                                                            {[1, 2, 3, 4, 5].map(s => (
+                                                                <Star key={s} className={`w-4 h-4 ${s <= t.calificacion ? 'text-[#C9A962] fill-[#C9A962]' : 'text-[#E8DDD4]'}`} />
+                                                            ))}
+                                                        </div>
+                                                        <p className="text-[#5A5A5A] text-sm italic">"{t.mensaje}"</p>
+                                                        
+                                                        {/* Fila de miniaturas adjuntas */}
+                                                        {fotos.length > 0 && (
+                                                            <div className="flex gap-2 mt-3 flex-wrap">
+                                                                {fotos.map((foto, idx) => (
+                                                                    <a
+                                                                        key={idx}
+                                                                        href={foto}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className="relative group w-16 h-16 rounded-xl overflow-hidden border border-[#E8DDD4] shadow-sm hover:scale-105 transition-all bg-white"
+                                                                    >
+                                                                        <img src={foto} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
+                                                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[10px]">
+                                                                            Ver
+                                                                        </div>
+                                                                    </a>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                        
+                                                        <p className="text-xs text-[#8B7D6B] mt-2">
+                                                            {new Date(t.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Mexico_City' })}
+                                                        </p>
                                                     </div>
-                                                )}
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <p className="font-bold text-[#3D3426]">{t.nombre}</p>
-                                                        {t.evento && <span className="text-xs px-2 py-0.5 bg-[#E8DDD4] rounded-full text-[#6B5E4F]">{t.evento}</span>}
-                                                        {!t.aprobado && <span className="text-xs px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded-full font-medium">Pendiente</span>}
-                                                        {t.destacado && <span className="text-xs px-2 py-0.5 bg-[#C9A962] text-white rounded-full font-medium">⭐ Destacado</span>}
+                                                    <div className="flex flex-col gap-1 flex-shrink-0">
+                                                        <button
+                                                            onClick={() => toggleTestimonioAprobado(t.id, t.aprobado)}
+                                                            className={`p-2 rounded-lg transition-colors text-sm font-medium ${t.aprobado ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'}`}
+                                                            title={t.aprobado ? 'Desaprobar' : 'Aprobar'}
+                                                        >
+                                                            {t.aprobado ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => toggleTestimonioDestacado(t.id, t.destacado)}
+                                                            className={`p-2 rounded-lg transition-colors ${t.destacado ? 'bg-[#C9A962] text-white' : 'bg-[#E8DDD4] text-[#6B5E4F] hover:bg-[#C9A962]/20'}`}
+                                                            title={t.destacado ? 'Quitar destacado' : 'Destacar'}
+                                                        >
+                                                            <Star className="w-4 h-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => deleteTestimonio(t.id)}
+                                                            className="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors"
+                                                            title="Eliminar"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
                                                     </div>
-                                                    <div className="flex gap-0.5 mb-2">
-                                                        {[1, 2, 3, 4, 5].map(s => (
-                                                            <Star key={s} className={`w-4 h-4 ${s <= t.calificacion ? 'text-[#C9A962] fill-[#C9A962]' : 'text-[#E8DDD4]'}`} />
-                                                        ))}
-                                                    </div>
-                                                    <p className="text-[#5A5A5A] text-sm italic">"{t.mensaje}"</p>
-                                                    <p className="text-xs text-[#8B7D6B] mt-2">
-                                                        {new Date(t.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'America/Mexico_City' })}
-                                                    </p>
-                                                </div>
-                                                <div className="flex flex-col gap-1 flex-shrink-0">
-                                                    <button
-                                                        onClick={() => toggleTestimonioAprobado(t.id, t.aprobado)}
-                                                        className={`p-2 rounded-lg transition-colors text-sm font-medium ${t.aprobado ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'}`}
-                                                        title={t.aprobado ? 'Desaprobar' : 'Aprobar'}
-                                                    >
-                                                        {t.aprobado ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                                                    </button>
-                                                    <button
-                                                        onClick={() => toggleTestimonioDestacado(t.id, t.destacado)}
-                                                        className={`p-2 rounded-lg transition-colors ${t.destacado ? 'bg-[#C9A962] text-white' : 'bg-[#E8DDD4] text-[#6B5E4F] hover:bg-[#C9A962]/20'}`}
-                                                        title={t.destacado ? 'Quitar destacado' : 'Destacar'}
-                                                    >
-                                                        <Star className="w-4 h-4" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => deleteTestimonio(t.id)}
-                                                        className="p-2 text-red-400 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors"
-                                                        title="Eliminar"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        )
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -2374,7 +2451,7 @@ export default function Admin() {
                                         <FileText className="w-6 h-6 text-white" />
                                     </div>
                                     <div>
-                                        <h3 className="font-display text-2xl font-bold text-white">Recibo de Anticipo</h3>
+                                        <h3 className="font-display text-2xl font-bold text-white">Recibo de {reciboForm.tipo === 'liquidacion' ? 'Liquidación' : 'Anticipo'}</h3>
                                         <p className="text-white/70 text-sm">{reciboModal.showPreview ? 'Listo para imprimir' : 'Completa los datos'}</p>
                                     </div>
                                 </div>
@@ -2408,20 +2485,33 @@ export default function Admin() {
                                         />
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-[#3D3426] mb-2">Monto del Anticipo *</label>
-                                    <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B5E4F] font-semibold">$</span>
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            value={reciboForm.monto}
-                                            onChange={e => setReciboForm({ ...reciboForm, monto: e.target.value })}
-                                            className="w-full pl-8 pr-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none text-2xl font-bold text-[#C9A962]"
-                                            placeholder="0.00"
-                                            required
-                                        />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Tipo de Recibo *</label>
+                                        <select
+                                            value={reciboForm.tipo}
+                                            onChange={e => setReciboForm({ ...reciboForm, tipo: e.target.value })}
+                                            className="w-full px-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none font-semibold text-[#3D3426]"
+                                        >
+                                            <option value="anticipo">Anticipo</option>
+                                            <option value="liquidacion">Liquidación</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-[#3D3426] mb-2">Monto {reciboForm.tipo === 'liquidacion' ? 'de la Liquidación' : 'del Anticipo'} *</label>
+                                        <div className="relative">
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#6B5E4F] font-semibold">$</span>
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={reciboForm.monto}
+                                                onChange={e => setReciboForm({ ...reciboForm, monto: e.target.value })}
+                                                className="w-full pl-8 pr-4 py-3 rounded-xl border-2 border-[#E8DDD4] focus:border-[#C9A962] outline-none text-2xl font-bold text-[#C9A962]"
+                                                placeholder="0.00"
+                                                required
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                                 <div>
@@ -2498,6 +2588,7 @@ export default function Admin() {
                                 <p className="text-[#6B5E4F] mb-6">El recibo ha sido guardado en la base de datos.</p>
                                 <div className="bg-[#FAF3EB] rounded-2xl p-4 mb-6 text-left">
                                     <p className="text-sm text-[#8B7D6B]">Cliente: <span className="font-semibold text-[#3D3426]">{reciboForm.cliente_nombre}</span></p>
+                                    <p className="text-sm text-[#8B7D6B]">Tipo: <span className="font-semibold text-[#3D3426]">{reciboForm.tipo === 'liquidacion' ? 'Liquidación' : 'Anticipo'}</span></p>
                                     <p className="text-sm text-[#8B7D6B]">Monto: <span className="font-bold text-[#C9A962] text-xl">${parseFloat(reciboForm.monto).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</span></p>
                                 </div>
                                 <div className="flex gap-3">
